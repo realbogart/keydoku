@@ -1,6 +1,8 @@
 module Keydoku where
 
-import Data.Maybe (fromMaybe)
+import Data.Char (intToDigit)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Graphics.Vty
   ( Attr,
     Event (EvKey),
@@ -8,6 +10,7 @@ import Graphics.Vty
     Key (KChar, KEsc),
     Vty,
     black,
+    brightCyan,
     char,
     defAttr,
     horizCat,
@@ -30,17 +33,19 @@ data KeypadPos = KeypadPos
   { row :: Int,
     col :: Int
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 data SelectionPhase
   = SelectQuadrant
   | SelectCell
+  | SelectValue
   deriving (Eq, Show)
 
 data GameState = GameState
   { phase :: SelectionPhase,
     selectedQuadrant :: Maybe KeypadPos,
-    selectedCell :: Maybe KeypadPos
+    selectedCell :: Maybe KeypadPos,
+    values :: Map KeypadPos Int
   }
   deriving (Eq, Show)
 
@@ -49,7 +54,8 @@ initialState =
   GameState
     { phase = SelectQuadrant,
       selectedQuadrant = Nothing,
-      selectedCell = Nothing
+      selectedCell = Nothing,
+      values = Map.empty
     }
 
 main :: IO ()
@@ -64,30 +70,75 @@ loop vty state = do
   case event of
     EvKey KEsc [] -> shutdown vty
     EvKey (KChar 'q') [] -> shutdown vty
-    EvKey (KChar key) [] ->
-      loop vty (fromMaybe state (advanceWithKey key state))
+    EvKey (KChar key) [] -> loop vty (handleKey key state)
     _ -> loop vty state
 
-advanceWithKey :: Char -> GameState -> Maybe GameState
-advanceWithKey key state = advanceSelection <$> keypadPosition key <*> pure state
+handleKey :: Char -> GameState -> GameState
+handleKey key state
+  | key == 'h' = deselect state
+  | key == 'n' = clearSelectedCellValue state
+  | otherwise =
+      case state.phase of
+        SelectQuadrant -> maybe state (`selectQuadrant` state) (selectionKeypadPosition key)
+        SelectCell -> maybe state (`selectCell` state) (selectionKeypadPosition key)
+        SelectValue -> maybe state (`selectValue` state) (valueKeyToDigit key)
 
-advanceSelection :: KeypadPos -> GameState -> GameState
-advanceSelection pos state =
-  case state.phase of
-    SelectQuadrant ->
+deselect :: GameState -> GameState
+deselect state =
+  state
+    { phase = SelectQuadrant,
+      selectedQuadrant = Nothing,
+      selectedCell = Nothing
+    }
+
+selectQuadrant :: KeypadPos -> GameState -> GameState
+selectQuadrant pos state =
+  state
+    { phase = SelectCell,
+      selectedQuadrant = Just pos,
+      selectedCell = Nothing
+    }
+
+selectCell :: KeypadPos -> GameState -> GameState
+selectCell pos state =
+  case state.selectedQuadrant of
+    Nothing -> state
+    Just quadrant ->
       state
-        { phase = SelectCell,
-          selectedQuadrant = Just pos,
-          selectedCell = Nothing
+        { phase = SelectValue,
+          selectedCell = Just (absoluteCell quadrant pos)
         }
-    SelectCell ->
-      case state.selectedQuadrant of
-        Nothing -> state
-        Just quadrant ->
-          state
-            { phase = SelectQuadrant,
-              selectedCell = Just (absoluteCell quadrant pos)
-            }
+
+toggleSelectedValue :: Int -> GameState -> GameState
+toggleSelectedValue digit state =
+  case state.selectedCell of
+    Nothing -> state
+    Just cell ->
+      state
+        { values = toggleCellDigit cell digit state.values
+        }
+
+selectValue :: Int -> GameState -> GameState
+selectValue digit state = deselect (toggleSelectedValue digit state)
+
+clearSelectedCellValue :: GameState -> GameState
+clearSelectedCellValue state =
+  case state.selectedCell of
+    Nothing -> state
+    Just cell ->
+      deselect
+        state
+          { values = Map.delete cell state.values
+          }
+
+toggleCellDigit :: KeypadPos -> Int -> Map KeypadPos Int -> Map KeypadPos Int
+toggleCellDigit cell digit currentValues =
+  case Map.lookup cell currentValues of
+    Just existing | existing == digit -> Map.delete cell currentValues
+    _ -> Map.insert cell digit currentValues
+
+cellValueAt :: GameState -> KeypadPos -> Maybe Int
+cellValueAt state pos = Map.lookup pos state.values
 
 absoluteCell :: KeypadPos -> KeypadPos -> KeypadPos
 absoluteCell quadrant cell =
@@ -96,12 +147,12 @@ absoluteCell quadrant cell =
       col = quadrant.col * 3 + cell.col
     }
 
-keypadPosition :: Char -> Maybe KeypadPos
-keypadPosition key =
+selectionKeypadPosition :: Char -> Maybe KeypadPos
+selectionKeypadPosition key =
   case key of
     'u' -> Just (KeypadPos 0 0)
     'i' -> Just (KeypadPos 0 1)
-    'o' -> Just (KeypadPos 0 2)
+    'p' -> Just (KeypadPos 0 2)
     'j' -> Just (KeypadPos 1 0)
     'k' -> Just (KeypadPos 1 1)
     'l' -> Just (KeypadPos 1 2)
@@ -110,20 +161,36 @@ keypadPosition key =
     '.' -> Just (KeypadPos 2 2)
     _ -> Nothing
 
+valueKeyToDigit :: Char -> Maybe Int
+valueKeyToDigit key =
+  case key of
+    'm' -> Just 1
+    ',' -> Just 2
+    '.' -> Just 3
+    'j' -> Just 4
+    'k' -> Just 5
+    'l' -> Just 6
+    'u' -> Just 7
+    'i' -> Just 8
+    'o' -> Just 9
+    _ -> Nothing
+
 render :: GameState -> Image
 render state =
   vertCat
     [ renderBoard state,
       string defAttr "",
       string defAttr (statusText state),
-      string defAttr "Keys: u i p / j k l / m , .   (q or Esc to quit)"
+      string defAttr "Select: u i p / j k l / m , .",
+      string defAttr "Value:  u i o / j k l / m , .    n=clear value, h=deselect, q/Esc=quit"
     ]
 
 statusText :: GameState -> String
 statusText state =
   case state.phase of
-    SelectQuadrant -> "Select quadrant (3x3 block)"
-    SelectCell -> "Select cell inside highlighted quadrant"
+    SelectQuadrant -> "Step 1/3: select quadrant"
+    SelectCell -> "Step 2/3: select cell inside highlighted quadrant"
+    SelectValue -> "Step 3/3: select value key (toggle)"
 
 renderBoard :: GameState -> Image
 renderBoard state =
@@ -135,15 +202,42 @@ renderBoard state =
 renderLine :: GameState -> Int -> String -> Image
 renderLine state y line =
   horizCat
-    [ char (attrFor state x y c) c
-      | (x, c) <- zip [0 ..] line
+    [ char (attrFor state x y) (charAt state x y baseChar)
+      | (x, baseChar) <- zip [0 ..] line
     ]
 
-attrFor :: GameState -> Int -> Int -> Char -> Attr
-attrFor state x y _c
-  | inSelectedCell state x y = cellAttr
-  | onQuadrantBorder state x y = borderAttr
-  | otherwise = baseAttr
+charAt :: GameState -> Int -> Int -> Char -> Char
+charAt state x y baseChar =
+  case valueAtDisplayCoord state x y of
+    Nothing -> baseChar
+    Just value -> intToDigit value
+
+attrFor :: GameState -> Int -> Int -> Attr
+attrFor state x y
+  | hasPlacedValueAt state x y = highlightedBase `withForeColor` brightCyan
+  | otherwise = highlightedBase
+  where
+    highlightedBase
+      | inSelectedCell state x y = cellAttr
+      | onQuadrantBorder state x y = borderAttr
+      | otherwise = baseAttr
+
+hasPlacedValueAt :: GameState -> Int -> Int -> Bool
+hasPlacedValueAt state x y =
+  case valueAtDisplayCoord state x y of
+    Nothing -> False
+    Just _ -> True
+
+valueAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
+valueAtDisplayCoord state x y
+  | x < 4 || y < 2 = Nothing
+  | (x - 4) `mod` 8 /= 0 = Nothing
+  | (y - 2) `mod` 4 /= 0 = Nothing
+  | cellRow > 8 || cellCol > 8 = Nothing
+  | otherwise = cellValueAt state (KeypadPos cellRow cellCol)
+  where
+    cellCol = (x - 4) `div` 8
+    cellRow = (y - 2) `div` 4
 
 inSelectedCell :: GameState -> Int -> Int -> Bool
 inSelectedCell state x y =

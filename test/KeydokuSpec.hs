@@ -10,25 +10,62 @@ spec = do
       template <- readFile "resources/board.txt"
       Keydoku.boardLines `shouldBe` lines template
 
-  describe "keypadPosition" $ do
+  describe "selectionKeypadPosition" $ do
     it "maps movement keys to keypad positions" $ do
-      Keydoku.keypadPosition 'u' `shouldBe` Just (Keydoku.KeypadPos 0 0)
-      Keydoku.keypadPosition 'k' `shouldBe` Just (Keydoku.KeypadPos 1 1)
-      Keydoku.keypadPosition '.' `shouldBe` Just (Keydoku.KeypadPos 2 2)
+      Keydoku.selectionKeypadPosition 'u' `shouldBe` Just (Keydoku.KeypadPos 0 0)
+      Keydoku.selectionKeypadPosition 'p' `shouldBe` Just (Keydoku.KeypadPos 0 2)
+      Keydoku.selectionKeypadPosition '.' `shouldBe` Just (Keydoku.KeypadPos 2 2)
 
     it "ignores unsupported keys" $ do
-      Keydoku.keypadPosition 'x' `shouldBe` Nothing
+      Keydoku.selectionKeypadPosition 'x' `shouldBe` Nothing
+      Keydoku.selectionKeypadPosition 'o' `shouldBe` Nothing
 
-  describe "advanceSelection" $ do
-    it "first key selects quadrant" $ do
-      let state = Keydoku.advanceSelection (Keydoku.KeypadPos 0 2) Keydoku.initialState
-      state.phase `shouldBe` Keydoku.SelectCell
-      state.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 0 2)
-      state.selectedCell `shouldBe` Nothing
+  describe "valueKeyToDigit" $ do
+    it "maps numpad-like value keys" $ do
+      Keydoku.valueKeyToDigit 'm' `shouldBe` Just 1
+      Keydoku.valueKeyToDigit 'k' `shouldBe` Just 5
+      Keydoku.valueKeyToDigit 'o' `shouldBe` Just 9
 
-    it "second key selects absolute cell and returns to quadrant mode" $ do
-      let withQuadrant = Keydoku.advanceSelection (Keydoku.KeypadPos 2 0) Keydoku.initialState
-          withCell = Keydoku.advanceSelection (Keydoku.KeypadPos 1 2) withQuadrant
-      withCell.phase `shouldBe` Keydoku.SelectQuadrant
-      withCell.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 2 0)
-      withCell.selectedCell `shouldBe` Just (Keydoku.KeypadPos 7 2)
+    it "ignores non-value keys" $ do
+      Keydoku.valueKeyToDigit 'p' `shouldBe` Nothing
+
+  describe "handleKey" $ do
+    it "follows quadrant -> cell -> value flow and toggles the digit" $ do
+      let state1 = Keydoku.handleKey 'p' Keydoku.initialState
+      state1.phase `shouldBe` Keydoku.SelectCell
+      state1.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 0 2)
+
+      let state2 = Keydoku.handleKey 'k' state1
+      state2.phase `shouldBe` Keydoku.SelectValue
+      state2.selectedCell `shouldBe` Just (Keydoku.KeypadPos 1 7)
+
+      let state3 = Keydoku.handleKey 'o' state2
+      state3.phase `shouldBe` Keydoku.SelectQuadrant
+      state3.selectedQuadrant `shouldBe` Nothing
+      state3.selectedCell `shouldBe` Nothing
+      Keydoku.cellValueAt state3 (Keydoku.KeypadPos 1 7) `shouldBe` Just 9
+
+      let state4 = Keydoku.handleKey 'p' state3
+          state5 = Keydoku.handleKey 'k' state4
+          state6 = Keydoku.handleKey 'o' state5
+      Keydoku.cellValueAt state6 (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
+
+    it "clears selected cell value with n" $ do
+      let state1 = Keydoku.handleKey 'p' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          state3 = Keydoku.handleKey 'o' state2
+          state4 = Keydoku.handleKey 'p' state3
+          state5 = Keydoku.handleKey 'k' state4
+          cleared = Keydoku.handleKey 'n' state5
+      Keydoku.cellValueAt cleared (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
+      cleared.phase `shouldBe` Keydoku.SelectQuadrant
+      cleared.selectedQuadrant `shouldBe` Nothing
+      cleared.selectedCell `shouldBe` Nothing
+
+    it "clears selection with h" $ do
+      let state1 = Keydoku.handleKey 'p' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          cleared = Keydoku.handleKey 'h' state2
+      cleared.phase `shouldBe` Keydoku.SelectQuadrant
+      cleared.selectedQuadrant `shouldBe` Nothing
+      cleared.selectedCell `shouldBe` Nothing
