@@ -119,6 +119,14 @@ spec = do
               }
       Keydoku.statusText conflictingState `shouldBe` "Step 1/3: select quadrant"
 
+  describe "generateHardPuzzle" $ do
+    it "creates a valid uniquely solvable board with a hard clue count" $ do
+      let puzzle = Keydoku.generateHardPuzzle 123456
+          state = Keydoku.initialState {Keydoku.values = puzzle}
+      Map.size puzzle `shouldSatisfy` (\n -> n >= 24 && n <= 32)
+      Keydoku.conflictingCells state `shouldBe` Set.empty
+      Keydoku.countSolutionsUpTo 2 puzzle `shouldBe` 1
+
   describe "selected value highlighting" $ do
     it "detects matching filled values when a filled cell is selected" $ do
       let state =

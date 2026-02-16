@@ -2,11 +2,13 @@ module Keydoku where
 
 import Control.Exception (IOException, try)
 import Data.Char (digitToInt, intToDigit)
+import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Time.Clock (UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Graphics.Vty
   ( Attr,
     Event (EvKey),
@@ -34,9 +36,6 @@ import Graphics.Vty
     yellow,
   )
 import Graphics.Vty.CrossPlatform (mkVty)
-import System.Directory (findExecutable)
-import System.Exit (ExitCode (ExitSuccess))
-import System.Process (readProcessWithExitCode)
 import System.Timeout (timeout)
 
 -- | 3x3 keypad position used for quadrant and cell selection.
@@ -178,8 +177,9 @@ loop vty timer state = do
     Just (EvKey KEsc []) -> shutdown vty
     Just (EvKey (KChar 'q') []) -> shutdown vty
     Just (EvKey (KFun 2) []) -> do
-      updated <- loadBoardFromClipboard state
-      loop vty timerAtFrame updated
+      updated <- startNewHardGame
+      timerStarted <- getCurrentTime
+      loop vty (TimerState timerStarted Nothing) updated
     Just (EvKey (KChar key) []) -> loop vty timerAtFrame (handleKey key state)
     Just _ -> loop vty timerAtFrame state
 
@@ -416,7 +416,7 @@ render elapsed state =
           string defAttr ("Time: " ++ formatElapsed elapsed),
           renderModeToggle state,
           string defAttr "Select: u i o / j k l / m , .",
-          string defAttr "Value:  u i o / j k l / m , .    y=undo, p=redo, n=clear value, h=deselect, F2=paste board, q/Esc=quit"
+          string defAttr "Value:  u i o / j k l / m , .    y=undo, p=redo, n=clear value, h=deselect, F2=new hard game, q/Esc=quit"
         ]
 
 renderModeToggle :: GameState -> Image
@@ -472,64 +472,129 @@ messageAttr context state =
       Just (StatusInfo _) -> defAttr `withForeColor` green
       Just (StatusError _) -> defAttr `withForeColor` red
 
-loadBoardFromClipboard :: GameState -> IO GameState
-loadBoardFromClipboard state = do
-  clipboardResult <- readClipboard
-  pure $
-    case clipboardResult >>= parseClipboardBoard of
-      Left err ->
-        state
-          { statusMessage = Just (StatusError ("Clipboard import failed: " ++ err))
-          }
-      Right boardValues ->
-        let fixed = Map.keysSet boardValues
-            updatedState =
-              state
-                { phase = SelectQuadrant,
-                  selectedQuadrant = Nothing,
-                  selectedCell = Nothing,
-                  values = boardValues,
-                  removedCandidates = Map.empty,
-                  fixedCells = fixed,
-                  statusMessage = Just (StatusInfo "Loaded board from clipboard.")
-                }
-         in recordUndoIfBoardChanged state updatedState
+startNewHardGame :: IO GameState
+startNewHardGame = do
+  seed <- freshSeed
+  let boardValues = generateHardPuzzle seed
+      fixed = Map.keysSet boardValues
+  pure
+    initialState
+      { values = boardValues,
+        fixedCells = fixed,
+        statusMessage = Just (StatusInfo "Started a new hard Sudoku.")
+      }
 
-readClipboard :: IO (Either String String)
-readClipboard = do
-  available <- findFirstAvailable ["wl-paste", "xclip", "pbpaste"]
-  case available of
-    Nothing -> pure (Left "no supported clipboard command found (wl-paste, xclip, pbpaste)")
-    Just command ->
-      case command of
-        "wl-paste" -> runClipboardCommand command ["-n"]
-        "xclip" -> runClipboardCommand command ["-selection", "clipboard", "-o"]
-        "pbpaste" -> runClipboardCommand command []
-        _ -> pure (Left "unsupported clipboard command")
+freshSeed :: IO Int
+freshSeed = do
+  now <- getPOSIXTime
+  pure (floor (now * 1000000))
 
-findFirstAvailable :: [FilePath] -> IO (Maybe FilePath)
-findFirstAvailable = go
+generateHardPuzzle :: Int -> Map KeypadPos Int
+generateHardPuzzle seed =
+  carveBoardToUniquePuzzle 25 (shuffleFromSeed (advanceSeed seed 97) allBoardCells) (generateSolvedBoard seed)
+
+generateSolvedBoard :: Int -> Map KeypadPos Int
+generateSolvedBoard seed =
+  Map.fromList
+    [ (KeypadPos row col, digitOrder !! (baseDigit - 1))
+      | (row, sourceRow) <- zip [0 ..] rowOrder,
+        (col, sourceCol) <- zip [0 ..] colOrder,
+        let baseDigit = ((sourceRow * 3 + sourceRow `div` 3 + sourceCol) `mod` 9) + 1
+    ]
   where
-    go [] = pure Nothing
-    go (command : rest) = do
-      executable <- findExecutable command
-      case executable of
-        Just _ -> pure (Just command)
-        Nothing -> go rest
+    digitOrder = shuffleFromSeed seed [1 .. 9]
+    rowOrder = permuteIndicesByGroups (advanceSeed seed 11)
+    colOrder = permuteIndicesByGroups (advanceSeed seed 23)
 
-runClipboardCommand :: FilePath -> [String] -> IO (Either String String)
-runClipboardCommand command args = do
-  (exitCode, stdoutText, stderrText) <- readProcessWithExitCode command args ""
-  pure $
-    case exitCode of
-      ExitSuccess -> Right (normalizeClipboardText stdoutText)
-      _ ->
-        Left
-          ( "failed to read clipboard via "
-              ++ command
-              ++ ": "
-              ++ firstNonEmpty stderrText stdoutText
-          )
+permuteIndicesByGroups :: Int -> [Int]
+permuteIndicesByGroups seed =
+  concatMap expandedBand orderedBands
+  where
+    orderedBands = shuffleFromSeed seed [0 .. 2]
+    expandedBand band =
+      [band * 3 + offset | offset <- shuffleFromSeed (advanceSeed seed (band + 1)) [0 .. 2]]
+
+carveBoardToUniquePuzzle :: Int -> [KeypadPos] -> Map KeypadPos Int -> Map KeypadPos Int
+carveBoardToUniquePuzzle targetClues cells solvedBoard = go cells solvedBoard
+  where
+    go [] board = board
+    go (cell : rest) board
+      | Map.size board <= targetClues = board
+      | otherwise =
+          let boardWithoutCell = Map.delete cell board
+           in if countSolutionsUpTo 2 boardWithoutCell == 1
+                then go rest boardWithoutCell
+                else go rest board
+
+countSolutionsUpTo :: Int -> Map KeypadPos Int -> Int
+countSolutionsUpTo limit board = search limit board
+  where
+    search remaining current
+      | remaining <= 0 = 0
+      | otherwise =
+          case bestEmptyCellWithCandidates current of
+            Nothing -> 1
+            Just (_cell, []) -> 0
+            Just (cell, candidates) -> searchCandidates remaining cell candidates current
+
+    searchCandidates _remaining _cell [] _current = 0
+    searchCandidates remaining cell (candidate : otherCandidates) current =
+      let foundWithCandidate = search remaining (Map.insert cell candidate current)
+       in if foundWithCandidate >= remaining
+            then remaining
+            else
+              foundWithCandidate
+                + searchCandidates
+                  (remaining - foundWithCandidate)
+                  cell
+                  otherCandidates
+                  current
+
+bestEmptyCellWithCandidates :: Map KeypadPos Int -> Maybe (KeypadPos, [Int])
+bestEmptyCellWithCandidates board =
+  case sortOn (length . snd) cellsWithCandidates of
+    [] -> Nothing
+    best : _ -> Just best
+  where
+    cellsWithCandidates =
+      [ (cell, allowedDigitsAtRaw board cell)
+        | cell <- allBoardCells,
+          Map.notMember cell board
+      ]
+
+allowedDigitsAtRaw :: Map KeypadPos Int -> KeypadPos -> [Int]
+allowedDigitsAtRaw board cell =
+  [ digit
+    | digit <- [1 .. 9],
+      notElem digit usedDigits
+  ]
+  where
+    usedDigits =
+      [ value
+        | (otherCell, value) <- Map.toList board,
+          otherCell.row == cell.row
+            || otherCell.col == cell.col
+            || (otherCell.row `div` 3 == cell.row `div` 3 && otherCell.col `div` 3 == cell.col `div` 3)
+      ]
+
+advanceSeed :: Int -> Int -> Int
+advanceSeed seed salt = (seed * 1103515245 + salt * 12345 + 67890) `mod` 2147483647
+
+shuffleFromSeed :: Int -> [a] -> [a]
+shuffleFromSeed seed items =
+  map snd $
+    sortOn
+      fst
+      [ (advanceSeed seed index, item)
+        | (index, item) <- zip [0 ..] items
+      ]
+
+allBoardCells :: [KeypadPos]
+allBoardCells =
+  [ KeypadPos row col
+    | row <- [0 .. 8],
+      col <- [0 .. 8]
+  ]
 
 normalizeClipboardText :: String -> String
 normalizeClipboardText = filter (/= '\r')
@@ -541,12 +606,6 @@ readTextFile path = do
     case readResult of
       Left err -> Left (show err)
       Right fileContent -> Right (normalizeClipboardText fileContent)
-
-firstNonEmpty :: String -> String -> String
-firstNonEmpty first second =
-  if null first
-    then second
-    else first
 
 parseClipboardBoard :: String -> Either String (Map KeypadPos Int)
 parseClipboardBoard clipboardText = do
