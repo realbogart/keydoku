@@ -41,6 +41,8 @@ library
     exposed-modules:  Keydoku
     build-depends:    base,
                       text,
+                      vty,
+                      vty-crossplatform,
                       bytestring,
                       async,
                       unordered-containers,
@@ -88,4 +90,3 @@ benchmark keydoku-bench
     hs-source-dirs:   bench
     default-language: GHC2021
     ghc-options:      -threaded -rtsopts -with-rtsopts=-N
-

@@ -1,31 +1,34 @@
 module KeydokuSpec (spec) where
 
-import Test.Hspec
-import Test.QuickCheck
 import Keydoku qualified
+import Test.Hspec
 
 spec :: Spec
 spec = do
-  describe "Keydoku.main" $ do
-    it "should print Hello, world!" $ do
-      -- This is a placeholder test - normally you'd test actual functions
-      -- For now, we just test that main exists and can be called
-      Keydoku.main `shouldReturn` ()
+  describe "boardLines" $ do
+    it "matches the board template in resources/board.txt" $ do
+      template <- readFile "resources/board.txt"
+      Keydoku.boardLines `shouldBe` lines template
 
-  describe "String operations (example)" $ do
-    it "reverse . reverse should be identity" $
-      property $
-        \s -> reverse (reverse s) == (s :: String)
+  describe "keypadPosition" $ do
+    it "maps movement keys to keypad positions" $ do
+      Keydoku.keypadPosition 'u' `shouldBe` Just (Keydoku.KeypadPos 0 0)
+      Keydoku.keypadPosition 'k' `shouldBe` Just (Keydoku.KeypadPos 1 1)
+      Keydoku.keypadPosition '.' `shouldBe` Just (Keydoku.KeypadPos 2 2)
 
-    it "length of concatenation equals sum of lengths" $
-      property $
-        \xs ys -> length (xs ++ ys) == length xs + length (ys :: [Int])
+    it "ignores unsupported keys" $ do
+      Keydoku.keypadPosition 'x' `shouldBe` Nothing
 
-  describe "Arithmetic properties (example)" $ do
-    it "addition is commutative" $
-      property $
-        \x y -> x + y == y + (x :: Int)
+  describe "advanceSelection" $ do
+    it "first key selects quadrant" $ do
+      let state = Keydoku.advanceSelection (Keydoku.KeypadPos 0 2) Keydoku.initialState
+      state.phase `shouldBe` Keydoku.SelectCell
+      state.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 0 2)
+      state.selectedCell `shouldBe` Nothing
 
-    it "multiplication by zero" $
-      property $
-        \x -> x * 0 == (0 :: Int)
+    it "second key selects absolute cell and returns to quadrant mode" $ do
+      let withQuadrant = Keydoku.advanceSelection (Keydoku.KeypadPos 2 0) Keydoku.initialState
+          withCell = Keydoku.advanceSelection (Keydoku.KeypadPos 1 2) withQuadrant
+      withCell.phase `shouldBe` Keydoku.SelectQuadrant
+      withCell.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 2 0)
+      withCell.selectedCell `shouldBe` Just (Keydoku.KeypadPos 7 2)
