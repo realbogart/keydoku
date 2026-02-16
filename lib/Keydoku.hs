@@ -261,21 +261,25 @@ render state =
 
 statusText :: GameState -> String
 statusText state =
-  case state.statusMessage of
-    Just (StatusInfo message) -> message
-    Just (StatusError message) -> message
-    Nothing ->
-      case state.phase of
-        SelectQuadrant -> "Step 1/3: select quadrant"
-        SelectCell -> "Step 2/3: select cell inside highlighted quadrant"
-        SelectValue -> "Step 3/3: select value key (toggle)"
+  if isSolved state
+    then "Solved!"
+    else case state.statusMessage of
+      Just (StatusInfo message) -> message
+      Just (StatusError message) -> message
+      Nothing ->
+        case state.phase of
+          SelectQuadrant -> "Step 1/3: select quadrant"
+          SelectCell -> "Step 2/3: select cell inside highlighted quadrant"
+          SelectValue -> "Step 3/3: select value key (toggle)"
 
 messageAttr :: GameState -> Attr
 messageAttr state =
-  case state.statusMessage of
-    Nothing -> defAttr
-    Just (StatusInfo _) -> defAttr `withForeColor` green
-    Just (StatusError _) -> defAttr `withForeColor` red
+  if isSolved state
+    then defAttr `withForeColor` green
+    else case state.statusMessage of
+      Nothing -> defAttr
+      Just (StatusInfo _) -> defAttr `withForeColor` green
+      Just (StatusError _) -> defAttr `withForeColor` red
 
 loadBoardFromClipboard :: GameState -> IO GameState
 loadBoardFromClipboard state = do
@@ -399,7 +403,7 @@ renderBoard state =
 renderLine :: GameState -> Int -> String -> Image
 renderLine state y line =
   horizCat
-    [ char (attrFor state x y) (charAt state x y baseChar)
+    [ char (attrFor state x y baseChar) (charAt state x y baseChar)
       | (x, baseChar) <- zip [0 ..] line
     ]
 
@@ -415,8 +419,8 @@ charAt state x y baseChar =
             then ' '
             else baseChar
 
-attrFor :: GameState -> Int -> Int -> Attr
-attrFor state x y
+attrFor :: GameState -> Int -> Int -> Char -> Attr
+attrFor state x y baseChar
   | isConflictAt state x y = highlightedBase `withForeColor` red
   | isFixedCellAt state x y = highlightedBase `withForeColor` white
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
@@ -424,9 +428,13 @@ attrFor state x y
   | otherwise = highlightedBase
   where
     highlightedBase
+      | isSolved state && isBorderChar baseChar = baseAttr `withForeColor` green
       | inSelectedCell state x y = cellAttr
       | onQuadrantBorder state x y = borderAttr
       | otherwise = baseAttr
+
+isBorderChar :: Char -> Bool
+isBorderChar c = c /= '.' && c /= ' '
 
 hasPlacedValueAt :: GameState -> Int -> Int -> Bool
 hasPlacedValueAt state x y =
@@ -575,6 +583,11 @@ conflictingCells state =
     sameRow left right = left.row == right.row
     sameCol left right = left.col == right.col
     sameBox left right = left.row `div` 3 == right.row `div` 3 && left.col `div` 3 == right.col `div` 3
+
+isSolved :: GameState -> Bool
+isSolved state =
+  Map.size state.values == 81
+    && Set.null (conflictingCells state)
 
 inSelectedCell :: GameState -> Int -> Int -> Bool
 inSelectedCell state x y =

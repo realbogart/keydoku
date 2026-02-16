@@ -85,6 +85,29 @@ spec = do
               }
       Keydoku.conflictingCells state `shouldBe` Set.empty
 
+  describe "statusText" $ do
+    it "shows Solved! for a complete, valid board" $ do
+      let solvedValues =
+            Map.fromList
+              [ (Keydoku.KeypadPos row col, ((row * 3 + row `div` 3 + col) `mod` 9) + 1)
+                | row <- [0 .. 8],
+                  col <- [0 .. 8]
+              ]
+          state = Keydoku.initialState {Keydoku.values = solvedValues}
+      Keydoku.statusText state `shouldBe` "Solved!"
+
+    it "does not show Solved! for incomplete or conflicting boards" $ do
+      Keydoku.statusText Keydoku.initialState `shouldBe` "Step 1/3: select quadrant"
+      let conflictingState =
+            Keydoku.initialState
+              { Keydoku.values =
+                  Map.fromList
+                    [ (Keydoku.KeypadPos 0 0, 1),
+                      (Keydoku.KeypadPos 0 1, 1)
+                    ]
+              }
+      Keydoku.statusText conflictingState `shouldBe` "Step 1/3: select quadrant"
+
   describe "handleKey" $ do
     it "follows quadrant -> cell -> value flow and toggles the digit" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState
