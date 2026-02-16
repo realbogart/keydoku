@@ -6,6 +6,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Time.Clock (UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
 import Graphics.Vty
   ( Attr,
     Event (EvKey),
@@ -36,6 +37,7 @@ import Graphics.Vty.CrossPlatform (mkVty)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess))
 import System.Process (readProcessWithExitCode)
+import System.Timeout (timeout)
 
 -- | 3x3 keypad position used for quadrant and cell selection.
 data KeypadPos = KeypadPos
@@ -87,6 +89,12 @@ data RenderContext = RenderContext
   }
   deriving (Eq, Show)
 
+data TimerState = TimerState
+  { startedAt :: UTCTime,
+    frozenElapsedSeconds :: Maybe Int
+  }
+  deriving (Eq, Show)
+
 initialState :: GameState
 initialState =
   GameState
@@ -108,8 +116,9 @@ main = mainWithBoardFile Nothing
 mainWithBoardFile :: Maybe FilePath -> IO ()
 mainWithBoardFile maybeBoardFile = do
   initial <- loadInitialState maybeBoardFile
+  timerStarted <- getCurrentTime
   vty <- userConfig >>= mkVty
-  loop vty initial
+  loop vty (TimerState timerStarted Nothing) initial
 
 loadInitialState :: Maybe FilePath -> IO GameState
 loadInitialState maybeBoardFile =
@@ -157,18 +166,49 @@ loadStateFromBoardFile boardFile = do
                     statusMessage = Just (StatusInfo ("Loaded board file " ++ show boardFile ++ "."))
                   }
 
-loop :: Vty -> GameState -> IO ()
-loop vty state = do
-  update vty (picForImage (render state))
-  event <- nextEvent vty
-  case event of
-    EvKey KEsc [] -> shutdown vty
-    EvKey (KChar 'q') [] -> shutdown vty
-    EvKey (KFun 2) [] -> do
+loop :: Vty -> TimerState -> GameState -> IO ()
+loop vty timer state = do
+  now <- getCurrentTime
+  let timerAtFrame = updateTimer now state timer
+      elapsed = elapsedSeconds now timerAtFrame
+  update vty (picForImage (render elapsed state))
+  maybeEvent <- timeout 200000 (nextEvent vty)
+  case maybeEvent of
+    Nothing -> loop vty timerAtFrame state
+    Just (EvKey KEsc []) -> shutdown vty
+    Just (EvKey (KChar 'q') []) -> shutdown vty
+    Just (EvKey (KFun 2) []) -> do
       updated <- loadBoardFromClipboard state
-      loop vty updated
-    EvKey (KChar key) [] -> loop vty (handleKey key state)
-    _ -> loop vty state
+      loop vty timerAtFrame updated
+    Just (EvKey (KChar key) []) -> loop vty timerAtFrame (handleKey key state)
+    Just _ -> loop vty timerAtFrame state
+
+updateTimer :: UTCTime -> GameState -> TimerState -> TimerState
+updateTimer now state timer =
+  case (isSolved state, timer.frozenElapsedSeconds) of
+    (True, Nothing) -> timer {frozenElapsedSeconds = Just (elapsedSeconds now timer)}
+    (False, Just frozenElapsed) ->
+      timer
+        { startedAt = addUTCTime (negate (fromIntegral frozenElapsed)) now,
+          frozenElapsedSeconds = Nothing
+        }
+    _ -> timer
+
+elapsedSeconds :: UTCTime -> TimerState -> Int
+elapsedSeconds now timer =
+  case timer.frozenElapsedSeconds of
+    Just frozenElapsed -> frozenElapsed
+    Nothing -> max 0 (floor (diffUTCTime now timer.startedAt))
+
+formatElapsed :: Int -> String
+formatElapsed elapsed =
+  let (minutesElapsed, secondsElapsed) = elapsed `divMod` 60
+   in pad2 minutesElapsed ++ ":" ++ pad2 secondsElapsed
+
+pad2 :: Int -> String
+pad2 n
+  | n < 10 = '0' : show n
+  | otherwise = show n
 
 handleKey :: Char -> GameState -> GameState
 handleKey key state
@@ -366,13 +406,14 @@ valueKeyToDigit key =
     'o' -> Just 9
     _ -> Nothing
 
-render :: GameState -> Image
-render state =
+render :: Int -> GameState -> Image
+render elapsed state =
   let context = renderContext state
    in vertCat
         [ renderBoard context state,
           string defAttr "",
           string (messageAttr context state) (statusTextWithContext context state),
+          string defAttr ("Time: " ++ formatElapsed elapsed),
           renderModeToggle state,
           string defAttr "Select: u i o / j k l / m , .",
           string defAttr "Value:  u i o / j k l / m , .    y=undo, p=redo, n=clear value, h=deselect, F2=paste board, q/Esc=quit"
