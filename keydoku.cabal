@@ -48,6 +48,7 @@ library
                       async,
                       unordered-containers,
                       directory,
+                      process,
                       filepath,
                       stm,
                       transformers,

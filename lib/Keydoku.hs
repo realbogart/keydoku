@@ -1,6 +1,7 @@
 module Keydoku where
 
-import Data.Char (intToDigit)
+import Control.Exception (IOException, try)
+import Data.Char (digitToInt, intToDigit)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set (Set)
@@ -9,7 +10,7 @@ import Graphics.Vty
   ( Attr,
     Event (EvKey),
     Image,
-    Key (KChar, KEsc),
+    Key (KChar, KEsc, KFun),
     Vty,
     black,
     brightBlack,
@@ -31,6 +32,9 @@ import Graphics.Vty
     yellow,
   )
 import Graphics.Vty.CrossPlatform (mkVty)
+import System.Directory (findExecutable)
+import System.Exit (ExitCode (ExitSuccess))
+import System.Process (readProcessWithExitCode)
 
 -- | 3x3 keypad position used for quadrant and cell selection.
 data KeypadPos = KeypadPos
@@ -49,8 +53,15 @@ data GameState = GameState
   { phase :: SelectionPhase,
     selectedQuadrant :: Maybe KeypadPos,
     selectedCell :: Maybe KeypadPos,
-    values :: Map KeypadPos Int
+    values :: Map KeypadPos Int,
+    fixedCells :: Set KeypadPos,
+    statusMessage :: Maybe StatusMessage
   }
+  deriving (Eq, Show)
+
+data StatusMessage
+  = StatusInfo String
+  | StatusError String
   deriving (Eq, Show)
 
 initialState :: GameState
@@ -59,13 +70,64 @@ initialState =
     { phase = SelectQuadrant,
       selectedQuadrant = Nothing,
       selectedCell = Nothing,
-      values = Map.empty
+      values = Map.empty,
+      fixedCells = Set.empty,
+      statusMessage = Nothing
     }
 
 main :: IO ()
-main = do
+main = mainWithBoardFile Nothing
+
+mainWithBoardFile :: Maybe FilePath -> IO ()
+mainWithBoardFile maybeBoardFile = do
+  initial <- loadInitialState maybeBoardFile
   vty <- userConfig >>= mkVty
-  loop vty initialState
+  loop vty initial
+
+loadInitialState :: Maybe FilePath -> IO GameState
+loadInitialState maybeBoardFile =
+  case maybeBoardFile of
+    Nothing -> pure initialState
+    Just boardFile -> loadStateFromBoardFile boardFile
+
+loadStateFromBoardFile :: FilePath -> IO GameState
+loadStateFromBoardFile boardFile = do
+  fileContentResult <- readTextFile boardFile
+  pure $
+    case fileContentResult of
+      Left err ->
+        initialState
+          { statusMessage =
+              Just
+                ( StatusError
+                    ( "Failed to load board file "
+                        ++ show boardFile
+                        ++ ": "
+                        ++ err
+                    )
+                )
+          }
+      Right fileContent ->
+        case parseClipboardBoard fileContent of
+          Left err ->
+            initialState
+              { statusMessage =
+                  Just
+                    ( StatusError
+                        ( "Invalid board file "
+                            ++ show boardFile
+                            ++ ": "
+                            ++ err
+                        )
+                    )
+              }
+          Right boardValues ->
+            let fixed = Map.keysSet boardValues
+             in initialState
+                  { values = boardValues,
+                    fixedCells = fixed,
+                    statusMessage = Just (StatusInfo ("Loaded board file " ++ show boardFile ++ "."))
+                  }
 
 loop :: Vty -> GameState -> IO ()
 loop vty state = do
@@ -74,18 +136,24 @@ loop vty state = do
   case event of
     EvKey KEsc [] -> shutdown vty
     EvKey (KChar 'q') [] -> shutdown vty
+    EvKey (KFun 2) [] -> do
+      updated <- loadBoardFromClipboard state
+      loop vty updated
     EvKey (KChar key) [] -> loop vty (handleKey key state)
     _ -> loop vty state
 
 handleKey :: Char -> GameState -> GameState
 handleKey key state
-  | key == 'h' = deselect state
-  | key == 'n' = clearSelectedCellValue state
+  | key == 'h' = clearStatusMessage (deselect state)
+  | key == 'n' = clearStatusMessage (clearSelectedCellValue state)
   | otherwise =
       case state.phase of
-        SelectQuadrant -> maybe state (`selectQuadrant` state) (selectionKeypadPosition key)
-        SelectCell -> maybe state (`selectCell` state) (selectionKeypadPosition key)
-        SelectValue -> maybe state (`selectValue` state) (valueKeyToDigit key)
+        SelectQuadrant -> maybe state (clearStatusMessage . (`selectQuadrant` state)) (selectionKeypadPosition key)
+        SelectCell -> maybe state (clearStatusMessage . (`selectCell` state)) (selectionKeypadPosition key)
+        SelectValue -> maybe state (clearStatusMessage . (`selectValue` state)) (valueKeyToDigit key)
+
+clearStatusMessage :: GameState -> GameState
+clearStatusMessage state = state {statusMessage = Nothing}
 
 deselect :: GameState -> GameState
 deselect state =
@@ -117,6 +185,7 @@ toggleSelectedValue :: Int -> GameState -> GameState
 toggleSelectedValue digit state =
   case state.selectedCell of
     Nothing -> state
+    Just cell | Set.member cell state.fixedCells -> state
     Just cell ->
       state
         { values = toggleCellDigit cell digit state.values
@@ -129,6 +198,7 @@ clearSelectedCellValue :: GameState -> GameState
 clearSelectedCellValue state =
   case state.selectedCell of
     Nothing -> state
+    Just cell | Set.member cell state.fixedCells -> deselect state
     Just cell ->
       deselect
         state
@@ -184,17 +254,140 @@ render state =
   vertCat
     [ renderBoard state,
       string defAttr "",
-      string defAttr (statusText state),
+      string (messageAttr state) (statusText state),
       string defAttr "Select: u i o / j k l / m , .",
-      string defAttr "Value:  u i o / j k l / m , .    n=clear value, h=deselect, q/Esc=quit"
+      string defAttr "Value:  u i o / j k l / m , .    n=clear value, h=deselect, F2=paste board, q/Esc=quit"
     ]
 
 statusText :: GameState -> String
 statusText state =
-  case state.phase of
-    SelectQuadrant -> "Step 1/3: select quadrant"
-    SelectCell -> "Step 2/3: select cell inside highlighted quadrant"
-    SelectValue -> "Step 3/3: select value key (toggle)"
+  case state.statusMessage of
+    Just (StatusInfo message) -> message
+    Just (StatusError message) -> message
+    Nothing ->
+      case state.phase of
+        SelectQuadrant -> "Step 1/3: select quadrant"
+        SelectCell -> "Step 2/3: select cell inside highlighted quadrant"
+        SelectValue -> "Step 3/3: select value key (toggle)"
+
+messageAttr :: GameState -> Attr
+messageAttr state =
+  case state.statusMessage of
+    Nothing -> defAttr
+    Just (StatusInfo _) -> defAttr `withForeColor` green
+    Just (StatusError _) -> defAttr `withForeColor` red
+
+loadBoardFromClipboard :: GameState -> IO GameState
+loadBoardFromClipboard state = do
+  clipboardResult <- readClipboard
+  pure $
+    case clipboardResult >>= parseClipboardBoard of
+      Left err ->
+        state
+          { statusMessage = Just (StatusError ("Clipboard import failed: " ++ err))
+          }
+      Right boardValues ->
+        let fixed = Map.keysSet boardValues
+         in state
+              { phase = SelectQuadrant,
+                selectedQuadrant = Nothing,
+                selectedCell = Nothing,
+                values = boardValues,
+                fixedCells = fixed,
+                statusMessage = Just (StatusInfo "Loaded board from clipboard.")
+              }
+
+readClipboard :: IO (Either String String)
+readClipboard = do
+  available <- findFirstAvailable ["wl-paste", "xclip", "pbpaste"]
+  case available of
+    Nothing -> pure (Left "no supported clipboard command found (wl-paste, xclip, pbpaste)")
+    Just command ->
+      case command of
+        "wl-paste" -> runClipboardCommand command ["-n"]
+        "xclip" -> runClipboardCommand command ["-selection", "clipboard", "-o"]
+        "pbpaste" -> runClipboardCommand command []
+        _ -> pure (Left "unsupported clipboard command")
+
+findFirstAvailable :: [FilePath] -> IO (Maybe FilePath)
+findFirstAvailable = go
+  where
+    go [] = pure Nothing
+    go (command : rest) = do
+      executable <- findExecutable command
+      case executable of
+        Just _ -> pure (Just command)
+        Nothing -> go rest
+
+runClipboardCommand :: FilePath -> [String] -> IO (Either String String)
+runClipboardCommand command args = do
+  (exitCode, stdoutText, stderrText) <- readProcessWithExitCode command args ""
+  pure $
+    case exitCode of
+      ExitSuccess -> Right (normalizeClipboardText stdoutText)
+      _ ->
+        Left
+          ( "failed to read clipboard via "
+              ++ command
+              ++ ": "
+              ++ firstNonEmpty stderrText stdoutText
+          )
+
+normalizeClipboardText :: String -> String
+normalizeClipboardText = filter (/= '\r')
+
+readTextFile :: FilePath -> IO (Either String String)
+readTextFile path = do
+  readResult <- try (readFile path) :: IO (Either IOException String)
+  pure $
+    case readResult of
+      Left err -> Left (show err)
+      Right fileContent -> Right (normalizeClipboardText fileContent)
+
+firstNonEmpty :: String -> String -> String
+firstNonEmpty first second =
+  if null first
+    then second
+    else first
+
+parseClipboardBoard :: String -> Either String (Map KeypadPos Int)
+parseClipboardBoard clipboardText = do
+  let boardRows = lines clipboardText
+  if length boardRows /= 9
+    then Left "expected exactly 9 lines"
+    else
+      if any ((/= 9) . length) boardRows
+        then Left "each line must contain exactly 9 characters"
+        else parseRows boardRows
+
+parseRows :: [String] -> Either String (Map KeypadPos Int)
+parseRows rows =
+  fmap (Map.fromList . concat) (traverse parseRow (zip [0 ..] rows))
+
+parseRow :: (Int, String) -> Either String [(KeypadPos, Int)]
+parseRow (rowIndex, rowText) =
+  fmap concat (traverse (parseCell rowIndex) (zip [0 ..] rowText))
+
+allCells :: [String] -> [(Int, Int, Char)]
+allCells rows =
+  [ (rowIndex, colIndex, cellChar)
+    | (rowIndex, rowText) <- zip [0 ..] rows,
+      (colIndex, cellChar) <- zip [0 ..] rowText
+  ]
+
+parseCell :: Int -> (Int, Char) -> Either String [(KeypadPos, Int)]
+parseCell rowIndex (colIndex, cellChar)
+  | cellChar == ' ' = Right []
+  | cellChar >= '1' && cellChar <= '9' =
+      Right [(KeypadPos rowIndex colIndex, digitToInt cellChar)]
+  | otherwise =
+      Left
+        ( "invalid character at row "
+            ++ show (rowIndex + 1)
+            ++ ", col "
+            ++ show (colIndex + 1)
+            ++ " (use digits 1-9 or spaces)"
+        )
 
 renderBoard :: GameState -> Image
 renderBoard state =
@@ -225,6 +418,7 @@ charAt state x y baseChar =
 attrFor :: GameState -> Int -> Int -> Attr
 attrFor state x y
   | isConflictAt state x y = highlightedBase `withForeColor` red
+  | isFixedCellAt state x y = highlightedBase `withForeColor` white
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
   | otherwise = highlightedBase
@@ -238,7 +432,13 @@ hasPlacedValueAt :: GameState -> Int -> Int -> Bool
 hasPlacedValueAt state x y =
   case valueAtDisplayCoord state x y of
     Nothing -> False
-    Just _ -> True
+    Just _ -> not (isFixedCellAt state x y)
+
+isFixedCellAt :: GameState -> Int -> Int -> Bool
+isFixedCellAt state x y =
+  case cellAtDisplayCoord x y of
+    Nothing -> False
+    Just cell -> Set.member cell state.fixedCells
 
 isConflictAt :: GameState -> Int -> Int -> Bool
 isConflictAt state x y =

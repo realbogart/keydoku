@@ -125,3 +125,56 @@ spec = do
       cleared.phase `shouldBe` Keydoku.SelectQuadrant
       cleared.selectedQuadrant `shouldBe` Nothing
       cleared.selectedCell `shouldBe` Nothing
+
+  describe "fixed cells" $ do
+    it "does not clear a fixed cell with n" $ do
+      let cell = Keydoku.KeypadPos 0 0
+          state =
+            Keydoku.initialState
+              { Keydoku.phase = Keydoku.SelectValue,
+                Keydoku.selectedCell = Just cell,
+                Keydoku.values = Map.fromList [(cell, 7)],
+                Keydoku.fixedCells = Set.fromList [cell]
+              }
+          cleared = Keydoku.handleKey 'n' state
+      Keydoku.cellValueAt cleared cell `shouldBe` Just 7
+
+    it "does not overwrite a fixed cell value" $ do
+      let cell = Keydoku.KeypadPos 0 0
+          state =
+            Keydoku.initialState
+              { Keydoku.phase = Keydoku.SelectValue,
+                Keydoku.selectedCell = Just cell,
+                Keydoku.values = Map.fromList [(cell, 7)],
+                Keydoku.fixedCells = Set.fromList [cell]
+              }
+          updated = Keydoku.handleKey 'm' state
+      Keydoku.cellValueAt updated cell `shouldBe` Just 7
+
+  describe "parseClipboardBoard" $ do
+    it "parses a valid 9x9 clipboard board with spaces as blanks" $ do
+      let boardText =
+            unlines
+              [ "1   34  8",
+                " 7 68  3 ",
+                "  821 7 4",
+                " 54 9 68 ",
+                "91 5 8 2 ",
+                " 8 3    5",
+                "3 59 6871",
+                "  6    4 ",
+                "  1 7 2  "
+              ]
+      case Keydoku.parseClipboardBoard boardText of
+        Left err -> expectationFailure ("expected successful parse, got: " ++ err)
+        Right values -> do
+          Map.lookup (Keydoku.KeypadPos 0 0) values `shouldBe` Just 1
+          Map.lookup (Keydoku.KeypadPos 0 1) values `shouldBe` Nothing
+          Map.lookup (Keydoku.KeypadPos 0 4) values `shouldBe` Just 3
+          Map.lookup (Keydoku.KeypadPos 8 2) values `shouldBe` Just 1
+
+    it "rejects invalid clipboard boards" $ do
+      Keydoku.parseClipboardBoard "123" `shouldBe` Left "expected exactly 9 lines"
+      Keydoku.parseClipboardBoard (unlines (replicate 9 "12345678")) `shouldBe` Left "each line must contain exactly 9 characters"
+      Keydoku.parseClipboardBoard (unlines (replicate 9 "12345678x"))
+        `shouldBe` Left "invalid character at row 1, col 9 (use digits 1-9 or spaces)"
