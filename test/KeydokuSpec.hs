@@ -1,6 +1,7 @@
 module KeydokuSpec (spec) where
 
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Keydoku qualified
 import Test.Hspec
 
@@ -19,7 +20,7 @@ spec = do
 
     it "ignores unsupported keys" $ do
       Keydoku.selectionKeypadPosition 'x' `shouldBe` Nothing
-      Keydoku.selectionKeypadPosition 'o' `shouldBe` Nothing
+      Keydoku.selectionKeypadPosition 'p' `shouldBe` Nothing
 
   describe "valueKeyToDigit" $ do
     it "maps numpad-like value keys" $ do
@@ -28,7 +29,7 @@ spec = do
       Keydoku.valueKeyToDigit 'o' `shouldBe` Just 9
 
     it "ignores non-value keys" $ do
-      Keydoku.valueKeyToDigit 'o' `shouldBe` Nothing
+      Keydoku.valueKeyToDigit 'p' `shouldBe` Nothing
 
   describe "auto candidates" $ do
     it "shows keypad-layout candidates in empty cells" $ do
@@ -55,6 +56,34 @@ spec = do
       Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [5]
       Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [7]
       Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [3]
+
+  describe "conflictingCells" $ do
+    it "marks row/column/box duplicates" $ do
+      let state =
+            Keydoku.initialState
+              { Keydoku.values =
+                  Map.fromList
+                    [ (Keydoku.KeypadPos 0 0, 5),
+                      (Keydoku.KeypadPos 0 2, 5),
+                      (Keydoku.KeypadPos 3 0, 5),
+                      (Keydoku.KeypadPos 1 1, 5),
+                      (Keydoku.KeypadPos 8 8, 9)
+                    ]
+              }
+      Keydoku.conflictingCells state
+        `shouldBe` Set.fromList [Keydoku.KeypadPos 0 0, Keydoku.KeypadPos 0 2, Keydoku.KeypadPos 3 0, Keydoku.KeypadPos 1 1]
+
+    it "is empty for non-conflicting boards" $ do
+      let state =
+            Keydoku.initialState
+              { Keydoku.values =
+                  Map.fromList
+                    [ (Keydoku.KeypadPos 0 0, 1),
+                      (Keydoku.KeypadPos 0 1, 2),
+                      (Keydoku.KeypadPos 1 3, 1)
+                    ]
+              }
+      Keydoku.conflictingCells state `shouldBe` Set.empty
 
   describe "handleKey" $ do
     it "follows quadrant -> cell -> value flow and toggles the digit" $ do

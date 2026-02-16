@@ -3,6 +3,8 @@ module Keydoku where
 import Data.Char (intToDigit)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Graphics.Vty
   ( Attr,
     Event (EvKey),
@@ -11,12 +13,13 @@ import Graphics.Vty
     Vty,
     black,
     brightBlack,
-    brightCyan,
     char,
     defAttr,
+    green,
     horizCat,
     nextEvent,
     picForImage,
+    red,
     shutdown,
     string,
     update,
@@ -182,7 +185,7 @@ render state =
     [ renderBoard state,
       string defAttr "",
       string defAttr (statusText state),
-      string defAttr "Select: u i p / j k l / m , .",
+      string defAttr "Select: u i o / j k l / m , .",
       string defAttr "Value:  u i o / j k l / m , .    n=clear value, h=deselect, q/Esc=quit"
     ]
 
@@ -197,14 +200,14 @@ renderBoard :: GameState -> Image
 renderBoard state =
   vertCat
     [ renderLine state y line
-    | (y, line) <- zip [0 ..] boardLines
+      | (y, line) <- zip [0 ..] boardLines
     ]
 
 renderLine :: GameState -> Int -> String -> Image
 renderLine state y line =
   horizCat
     [ char (attrFor state x y) (charAt state x y baseChar)
-    | (x, baseChar) <- zip [0 ..] line
+      | (x, baseChar) <- zip [0 ..] line
     ]
 
 charAt :: GameState -> Int -> Int -> Char -> Char
@@ -221,7 +224,8 @@ charAt state x y baseChar =
 
 attrFor :: GameState -> Int -> Int -> Attr
 attrFor state x y
-  | hasPlacedValueAt state x y = highlightedBase `withForeColor` brightCyan
+  | isConflictAt state x y = highlightedBase `withForeColor` red
+  | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
   | otherwise = highlightedBase
   where
@@ -235,6 +239,12 @@ hasPlacedValueAt state x y =
   case valueAtDisplayCoord state x y of
     Nothing -> False
     Just _ -> True
+
+isConflictAt :: GameState -> Int -> Int -> Bool
+isConflictAt state x y =
+  case cellAtDisplayCoord x y of
+    Nothing -> False
+    Just cell -> Set.member cell (conflictingCells state)
 
 hasCandidateAt :: GameState -> Int -> Int -> Bool
 hasCandidateAt state x y =
@@ -252,6 +262,20 @@ valueAtDisplayCoord state x y
   where
     cellCol = (x - 4) `div` 8
     cellRow = (y - 2) `div` 4
+
+cellAtDisplayCoord :: Int -> Int -> Maybe KeypadPos
+cellAtDisplayCoord x y
+  | x < 1 || y < 1 = Nothing
+  | xRel >= 7 || yRel >= 3 = Nothing
+  | cellRow > 8 || cellCol > 8 = Nothing
+  | otherwise = Just (KeypadPos cellRow cellCol)
+  where
+    xOffset = x - 1
+    yOffset = y - 1
+    xRel = xOffset `mod` 8
+    yRel = yOffset `mod` 4
+    cellCol = xOffset `div` 8
+    cellRow = yOffset `div` 4
 
 candidateAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
 candidateAtDisplayCoord state x y = do
@@ -304,8 +328,8 @@ allowedDigitsAt state cell
   | hasValueAt state cell = []
   | otherwise =
       [ digit
-      | digit <- [1 .. 9],
-        not (digit `elem` usedDigits)
+        | digit <- [1 .. 9],
+          not (digit `elem` usedDigits)
       ]
   where
     usedDigits = rowDigits state cell ++ colDigits state cell ++ boxDigits state cell
@@ -313,24 +337,44 @@ allowedDigitsAt state cell
 rowDigits :: GameState -> KeypadPos -> [Int]
 rowDigits state cell =
   [ value
-  | (KeypadPos valueRow _valueCol, value) <- Map.toList state.values,
-    valueRow == cell.row
+    | (KeypadPos valueRow _valueCol, value) <- Map.toList state.values,
+      valueRow == cell.row
   ]
 
 colDigits :: GameState -> KeypadPos -> [Int]
 colDigits state cell =
   [ value
-  | (KeypadPos _valueRow valueCol, value) <- Map.toList state.values,
-    valueCol == cell.col
+    | (KeypadPos _valueRow valueCol, value) <- Map.toList state.values,
+      valueCol == cell.col
   ]
 
 boxDigits :: GameState -> KeypadPos -> [Int]
 boxDigits state cell =
   [ value
-  | (KeypadPos valueRow valueCol, value) <- Map.toList state.values,
-    valueRow `div` 3 == cell.row `div` 3,
-    valueCol `div` 3 == cell.col `div` 3
+    | (KeypadPos valueRow valueCol, value) <- Map.toList state.values,
+      valueRow `div` 3 == cell.row `div` 3,
+      valueCol `div` 3 == cell.col `div` 3
   ]
+
+conflictingCells :: GameState -> Set KeypadPos
+conflictingCells state =
+  Set.fromList
+    [ cell
+      | (cell, value) <- Map.toList state.values,
+        hasConflict cell value
+    ]
+  where
+    hasConflict cell value =
+      any
+        (\(otherCell, otherValue) -> cell /= otherCell && value == otherValue && conflictsWith cell otherCell)
+        (Map.toList state.values)
+
+    conflictsWith left right =
+      sameRow left right || sameCol left right || sameBox left right
+
+    sameRow left right = left.row == right.row
+    sameCol left right = left.col == right.col
+    sameBox left right = left.row `div` 3 == right.row `div` 3 && left.col `div` 3 == right.col `div` 3
 
 inSelectedCell :: GameState -> Int -> Int -> Bool
 inSelectedCell state x y =
@@ -393,14 +437,14 @@ contentLine =
     ++ concat
       [ cellRow blockCol
           ++ if blockCol < 2 then "║" else ""
-      | blockCol <- [0 .. 2]
+        | blockCol <- [0 .. 2]
       ]
     ++ "║"
   where
     cellRow _blockCol =
       concat
         [ " . . . " ++ if colInBlock < 2 then "│" else ""
-        | colInBlock <- [0 .. 2]
+          | colInBlock <- [0 .. 2]
         ]
 
 makeSeparator :: Char -> Char -> Char -> Char -> Char -> String
@@ -409,12 +453,12 @@ makeSeparator left right minorCross majorCross fill =
     ++ concat
       [ chunk blockCol
           ++ if blockCol < 2 then [majorCross] else ""
-      | blockCol <- [0 .. 2]
+        | blockCol <- [0 .. 2]
       ]
     ++ [right]
   where
     chunk _blockCol =
       concat
         [ replicate 7 fill ++ if colInBlock < 2 then [minorCross] else ""
-        | colInBlock <- [0 .. 2]
+          | colInBlock <- [0 .. 2]
         ]
