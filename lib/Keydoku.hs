@@ -581,13 +581,27 @@ advanceSeed :: Int -> Int -> Int
 advanceSeed seed salt = (seed * 1103515245 + salt * 12345 + 67890) `mod` 2147483647
 
 shuffleFromSeed :: Int -> [a] -> [a]
-shuffleFromSeed seed items =
-  map snd $
-    sortOn
-      fst
-      [ (advanceSeed seed index, item)
-        | (index, item) <- zip [0 ..] items
-      ]
+shuffleFromSeed seed items = go (normalizeSeed seed) items []
+  where
+    go _ [] acc = reverse acc
+    go currentSeed remaining acc =
+      let nextSeed = advanceSeed currentSeed 1
+          pickIndex = nextSeed `mod` length remaining
+          (picked, rest) = removeAt pickIndex remaining
+       in go nextSeed rest (picked : acc)
+
+normalizeSeed :: Int -> Int
+normalizeSeed seed =
+  let normalized = seed `mod` 2147483647
+   in if normalized <= 0
+        then normalized + 2147483646
+        else normalized
+
+removeAt :: Int -> [a] -> (a, [a])
+removeAt targetIndex items =
+  case splitAt targetIndex items of
+    (prefix, picked : suffix) -> (picked, prefix ++ suffix)
+    _ -> error "removeAt: index out of bounds"
 
 allBoardCells :: [KeypadPos]
 allBoardCells =

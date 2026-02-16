@@ -127,6 +127,9 @@ spec = do
       Keydoku.conflictingCells state `shouldBe` Set.empty
       Keydoku.countSolutionsUpTo 2 puzzle `shouldBe` 1
 
+    it "produces different puzzles for different seeds" $ do
+      Keydoku.generateHardPuzzle 123456 `shouldNotBe` Keydoku.generateHardPuzzle 123457
+
   describe "selected value highlighting" $ do
     it "detects matching filled values when a filled cell is selected" $ do
       let state =
