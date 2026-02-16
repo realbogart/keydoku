@@ -373,16 +373,26 @@ render state =
         [ renderBoard context state,
           string defAttr "",
           string (messageAttr context state) (statusTextWithContext context state),
-          string defAttr ("Mode: " ++ insertionModeLabel state.insertionMode ++ "  (: / ö to toggle)"),
+          renderModeToggle state,
           string defAttr "Select: u i o / j k l / m , .",
           string defAttr "Value:  u i o / j k l / m , .    y=undo, p=redo, n=clear value, h=deselect, F2=paste board, q/Esc=quit"
         ]
 
-insertionModeLabel :: InsertionMode -> String
-insertionModeLabel currentMode =
-  case currentMode of
-    InsertValues -> "insert numbers"
-    RemoveCandidates -> "remove candidates"
+renderModeToggle :: GameState -> Image
+renderModeToggle state =
+  horizCat
+    [ string defAttr "Mode: ",
+      modeChip (state.insertionMode == InsertValues) (defAttr `withForeColor` black `withBackColor` green) " INSERT NUMBERS ",
+      string defAttr " ",
+      modeChip (state.insertionMode == RemoveCandidates) (defAttr `withForeColor` white `withBackColor` red) " REMOVE CANDIDATES ",
+      string defAttr "  (: / ö to toggle)"
+    ]
+
+modeChip :: Bool -> Attr -> String -> Image
+modeChip isActive activeAttr label =
+  if isActive
+    then string activeAttr label
+    else string (defAttr `withForeColor` brightBlack) label
 
 renderContext :: GameState -> RenderContext
 renderContext state =
