@@ -108,6 +108,34 @@ spec = do
               }
       Keydoku.statusText conflictingState `shouldBe` "Step 1/3: select quadrant"
 
+  describe "selected value highlighting" $ do
+    it "detects matching filled values when a filled cell is selected" $ do
+      let state =
+            Keydoku.initialState
+              { Keydoku.phase = Keydoku.SelectValue,
+                Keydoku.selectedCell = Just (Keydoku.KeypadPos 0 0),
+                Keydoku.values =
+                  Map.fromList
+                    [ (Keydoku.KeypadPos 0 0, 5),
+                      (Keydoku.KeypadPos 1 2, 5),
+                      (Keydoku.KeypadPos 2 2, 7)
+                    ]
+              }
+      Keydoku.selectedFilledValue state `shouldBe` Just 5
+      Keydoku.isSelectedValueMatchAt state 4 2 `shouldBe` True
+      Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` True
+      Keydoku.isSelectedValueMatchAt state 20 10 `shouldBe` False
+
+    it "does not match values when selected cell is empty" $ do
+      let state =
+            Keydoku.initialState
+              { Keydoku.phase = Keydoku.SelectValue,
+                Keydoku.selectedCell = Just (Keydoku.KeypadPos 0 0),
+                Keydoku.values = Map.fromList [(Keydoku.KeypadPos 1 2, 5)]
+              }
+      Keydoku.selectedFilledValue state `shouldBe` Nothing
+      Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` False
+
   describe "handleKey" $ do
     it "follows quadrant -> cell -> value flow and toggles the digit" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState

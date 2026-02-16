@@ -15,6 +15,7 @@ import Graphics.Vty
     black,
     brightBlack,
     char,
+    cyan,
     defAttr,
     green,
     horizCat,
@@ -503,6 +504,7 @@ charAt state x y baseChar =
 attrFor :: RenderContext -> GameState -> Int -> Int -> Char -> Attr
 attrFor context state x y baseChar
   | isConflictAt context.conflicts x y = highlightedBase `withForeColor` red
+  | isSelectedValueMatchAt state x y = highlightedBase `withForeColor` black `withBackColor` cyan
   | isFixedCellAt state x y = highlightedBase `withForeColor` white
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
@@ -540,6 +542,17 @@ hasCandidateAt state x y =
   case candidateAtDisplayCoord state x y of
     Nothing -> False
     Just _ -> True
+
+selectedFilledValue :: GameState -> Maybe Int
+selectedFilledValue state = do
+  selected <- state.selectedCell
+  cellValueAt state selected
+
+isSelectedValueMatchAt :: GameState -> Int -> Int -> Bool
+isSelectedValueMatchAt state x y =
+  case (selectedFilledValue state, valueAtDisplayCoord state x y) of
+    (Just selectedValue, Just value) -> selectedValue == value
+    _ -> False
 
 valueAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
 valueAtDisplayCoord state x y
