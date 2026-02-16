@@ -50,11 +50,18 @@ data SelectionPhase
   | SelectValue
   deriving (Eq, Show)
 
+data InsertionMode
+  = InsertValues
+  | RemoveCandidates
+  deriving (Eq, Show)
+
 data GameState = GameState
   { phase :: SelectionPhase,
     selectedQuadrant :: Maybe KeypadPos,
     selectedCell :: Maybe KeypadPos,
+    insertionMode :: InsertionMode,
     values :: Map KeypadPos Int,
+    removedCandidates :: Map KeypadPos (Set Int),
     fixedCells :: Set KeypadPos,
     undoHistory :: [BoardSnapshot],
     redoHistory :: [BoardSnapshot],
@@ -64,6 +71,7 @@ data GameState = GameState
 
 data BoardSnapshot = BoardSnapshot
   { snapshotValues :: Map KeypadPos Int,
+    snapshotRemovedCandidates :: Map KeypadPos (Set Int),
     snapshotFixedCells :: Set KeypadPos
   }
   deriving (Eq, Show)
@@ -85,7 +93,9 @@ initialState =
     { phase = SelectQuadrant,
       selectedQuadrant = Nothing,
       selectedCell = Nothing,
+      insertionMode = InsertValues,
       values = Map.empty,
+      removedCandidates = Map.empty,
       fixedCells = Set.empty,
       undoHistory = [],
       redoHistory = [],
@@ -142,6 +152,7 @@ loadStateFromBoardFile boardFile = do
             let fixed = Map.keysSet boardValues
              in initialState
                   { values = boardValues,
+                    removedCandidates = Map.empty,
                     fixedCells = fixed,
                     statusMessage = Just (StatusInfo ("Loaded board file " ++ show boardFile ++ "."))
                   }
@@ -165,6 +176,7 @@ handleKey key state
   | key == 'y' = clearStatusMessage (undoLastBoardChange state)
   | key == 'p' = clearStatusMessage (redoLastBoardChange state)
   | key == 'n' = clearStatusMessage (clearSelectedCellValue state)
+  | key == ':' || key == 'ö' = clearStatusMessage (toggleInsertionMode state)
   | otherwise =
       case state.phase of
         SelectQuadrant -> maybe state (clearStatusMessage . (`selectQuadrant` state)) (selectionKeypadPosition key)
@@ -212,8 +224,43 @@ toggleSelectedValue digit state =
 
 selectValue :: Int -> GameState -> GameState
 selectValue digit state =
-  let updatedState = deselect (toggleSelectedValue digit state)
+  let updatedState =
+        deselect $
+          case state.insertionMode of
+            InsertValues -> toggleSelectedValue digit state
+            RemoveCandidates -> toggleSelectedCandidateRemoval digit state
    in recordUndoIfBoardChanged state updatedState
+
+toggleInsertionMode :: GameState -> GameState
+toggleInsertionMode state =
+  state
+    { insertionMode =
+        case state.insertionMode of
+          InsertValues -> RemoveCandidates
+          RemoveCandidates -> InsertValues
+    }
+
+toggleSelectedCandidateRemoval :: Int -> GameState -> GameState
+toggleSelectedCandidateRemoval digit state =
+  case state.selectedCell of
+    Nothing -> state
+    Just cell | Set.member cell state.fixedCells -> state
+    Just cell | hasValueAt state cell -> state
+    Just cell ->
+      state
+        { removedCandidates = toggleRemovedCandidate cell digit state.removedCandidates
+        }
+
+toggleRemovedCandidate :: KeypadPos -> Int -> Map KeypadPos (Set Int) -> Map KeypadPos (Set Int)
+toggleRemovedCandidate cell digit currentRemoved =
+  let existing = Map.findWithDefault Set.empty cell currentRemoved
+      updated =
+        if Set.member digit existing
+          then Set.delete digit existing
+          else Set.insert digit existing
+   in if Set.null updated
+        then Map.delete cell currentRemoved
+        else Map.insert cell updated currentRemoved
 
 clearSelectedCellValue :: GameState -> GameState
 clearSelectedCellValue state =
@@ -237,6 +284,7 @@ undoLastBoardChange state =
        in deselect
             state
               { values = latestSnapshot.snapshotValues,
+                removedCandidates = latestSnapshot.snapshotRemovedCandidates,
                 fixedCells = latestSnapshot.snapshotFixedCells,
                 undoHistory = remainingSnapshots,
                 redoHistory = currentSnapshot : state.redoHistory
@@ -251,6 +299,7 @@ redoLastBoardChange state =
        in deselect
             state
               { values = latestSnapshot.snapshotValues,
+                removedCandidates = latestSnapshot.snapshotRemovedCandidates,
                 fixedCells = latestSnapshot.snapshotFixedCells,
                 undoHistory = currentSnapshot : state.undoHistory,
                 redoHistory = remainingSnapshots
@@ -260,6 +309,7 @@ boardSnapshot :: GameState -> BoardSnapshot
 boardSnapshot state =
   BoardSnapshot
     { snapshotValues = state.values,
+      snapshotRemovedCandidates = state.removedCandidates,
       snapshotFixedCells = state.fixedCells
     }
 
@@ -323,9 +373,16 @@ render state =
         [ renderBoard context state,
           string defAttr "",
           string (messageAttr context state) (statusTextWithContext context state),
+          string defAttr ("Mode: " ++ insertionModeLabel state.insertionMode ++ "  (: / ö to toggle)"),
           string defAttr "Select: u i o / j k l / m , .",
           string defAttr "Value:  u i o / j k l / m , .    y=undo, p=redo, n=clear value, h=deselect, F2=paste board, q/Esc=quit"
         ]
+
+insertionModeLabel :: InsertionMode -> String
+insertionModeLabel currentMode =
+  case currentMode of
+    InsertValues -> "insert numbers"
+    RemoveCandidates -> "remove candidates"
 
 renderContext :: GameState -> RenderContext
 renderContext state =
@@ -350,7 +407,10 @@ statusTextWithContext context state =
         case state.phase of
           SelectQuadrant -> "Step 1/3: select quadrant"
           SelectCell -> "Step 2/3: select cell inside highlighted quadrant"
-          SelectValue -> "Step 3/3: select value key (toggle)"
+          SelectValue ->
+            case state.insertionMode of
+              InsertValues -> "Step 3/3: select value key (toggle value)"
+              RemoveCandidates -> "Step 3/3: select value key (toggle candidate removal)"
 
 messageAttr :: RenderContext -> GameState -> Attr
 messageAttr context state =
@@ -378,6 +438,7 @@ loadBoardFromClipboard state = do
                   selectedQuadrant = Nothing,
                   selectedCell = Nothing,
                   values = boardValues,
+                  removedCandidates = Map.empty,
                   fixedCells = fixed,
                   statusMessage = Just (StatusInfo "Loaded board from clipboard.")
                 }
@@ -631,10 +692,14 @@ allowedDigitsAt state cell
   | otherwise =
       [ digit
         | digit <- [1 .. 9],
-          not (digit `elem` usedDigits)
+          not (digit `elem` usedDigits),
+          not (Set.member digit (removedCandidatesAt state cell))
       ]
   where
     usedDigits = rowDigits state cell ++ colDigits state cell ++ boxDigits state cell
+
+removedCandidatesAt :: GameState -> KeypadPos -> Set Int
+removedCandidatesAt state cell = Map.findWithDefault Set.empty cell state.removedCandidates
 
 rowDigits :: GameState -> KeypadPos -> [Int]
 rowDigits state cell =

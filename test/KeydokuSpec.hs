@@ -57,6 +57,17 @@ spec = do
       Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [7]
       Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [3]
 
+    it "hides manually removed candidates from auto-candidate rendering" $ do
+      let cell = Keydoku.KeypadPos 0 0
+          state =
+            Keydoku.initialState
+              { Keydoku.removedCandidates = Map.fromList [(cell, Set.fromList [5, 7])]
+              }
+      Keydoku.allowedDigitsAt state cell `shouldNotContain` [5]
+      Keydoku.allowedDigitsAt state cell `shouldNotContain` [7]
+      Keydoku.candidateAtDisplayCoord state 2 1 `shouldBe` Nothing
+      Keydoku.candidateAtDisplayCoord state 4 2 `shouldBe` Nothing
+
   describe "conflictingCells" $ do
     it "marks row/column/box duplicates" $ do
       let state =
@@ -229,6 +240,31 @@ spec = do
           redoIgnored = Keydoku.handleKey 'p' changed
       Keydoku.cellValueAt changed (Keydoku.KeypadPos 1 1) `shouldBe` Just 5
       redoIgnored `shouldBe` changed
+
+    it "toggles insertion mode with : and removes candidates instead of placing values" $ do
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          state3 = Keydoku.handleKey ':' state2
+          state4 = Keydoku.handleKey 'm' state3
+          targetCell = Keydoku.KeypadPos 1 7
+      state3.insertionMode `shouldBe` Keydoku.RemoveCandidates
+      Keydoku.cellValueAt state4 targetCell `shouldBe` Nothing
+      Map.lookup targetCell state4.removedCandidates `shouldBe` Just (Set.fromList [1])
+      state4.phase `shouldBe` Keydoku.SelectQuadrant
+      Keydoku.handleKey ':' state4
+        `shouldSatisfy` \s -> s.insertionMode == Keydoku.InsertValues
+
+    it "undoes and redoes manual candidate removals" $ do
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          state3 = Keydoku.handleKey ':' state2
+          removed = Keydoku.handleKey 'm' state3
+          undone = Keydoku.handleKey 'y' removed
+          redone = Keydoku.handleKey 'p' undone
+          targetCell = Keydoku.KeypadPos 1 7
+      Map.lookup targetCell removed.removedCandidates `shouldBe` Just (Set.fromList [1])
+      Map.lookup targetCell undone.removedCandidates `shouldBe` Nothing
+      Map.lookup targetCell redone.removedCandidates `shouldBe` Just (Set.fromList [1])
 
   describe "fixed cells" $ do
     it "does not clear a fixed cell with n" $ do
