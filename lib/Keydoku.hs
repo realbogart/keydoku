@@ -55,13 +55,27 @@ data GameState = GameState
     selectedCell :: Maybe KeypadPos,
     values :: Map KeypadPos Int,
     fixedCells :: Set KeypadPos,
+    undoHistory :: [BoardSnapshot],
+    redoHistory :: [BoardSnapshot],
     statusMessage :: Maybe StatusMessage
+  }
+  deriving (Eq, Show)
+
+data BoardSnapshot = BoardSnapshot
+  { snapshotValues :: Map KeypadPos Int,
+    snapshotFixedCells :: Set KeypadPos
   }
   deriving (Eq, Show)
 
 data StatusMessage
   = StatusInfo String
   | StatusError String
+  deriving (Eq, Show)
+
+data RenderContext = RenderContext
+  { solved :: Bool,
+    conflicts :: Set KeypadPos
+  }
   deriving (Eq, Show)
 
 initialState :: GameState
@@ -72,6 +86,8 @@ initialState =
       selectedCell = Nothing,
       values = Map.empty,
       fixedCells = Set.empty,
+      undoHistory = [],
+      redoHistory = [],
       statusMessage = Nothing
     }
 
@@ -145,6 +161,8 @@ loop vty state = do
 handleKey :: Char -> GameState -> GameState
 handleKey key state
   | key == 'h' = clearStatusMessage (deselect state)
+  | key == 'y' = clearStatusMessage (undoLastBoardChange state)
+  | key == 'p' = clearStatusMessage (redoLastBoardChange state)
   | key == 'n' = clearStatusMessage (clearSelectedCellValue state)
   | otherwise =
       case state.phase of
@@ -192,18 +210,66 @@ toggleSelectedValue digit state =
         }
 
 selectValue :: Int -> GameState -> GameState
-selectValue digit state = deselect (toggleSelectedValue digit state)
+selectValue digit state =
+  let updatedState = deselect (toggleSelectedValue digit state)
+   in recordUndoIfBoardChanged state updatedState
 
 clearSelectedCellValue :: GameState -> GameState
 clearSelectedCellValue state =
-  case state.selectedCell of
-    Nothing -> state
-    Just cell | Set.member cell state.fixedCells -> deselect state
-    Just cell ->
-      deselect
-        state
-          { values = Map.delete cell state.values
-          }
+  let updatedState =
+        case state.selectedCell of
+          Nothing -> state
+          Just cell | Set.member cell state.fixedCells -> deselect state
+          Just cell ->
+            deselect
+              state
+                { values = Map.delete cell state.values
+                }
+   in recordUndoIfBoardChanged state updatedState
+
+undoLastBoardChange :: GameState -> GameState
+undoLastBoardChange state =
+  case state.undoHistory of
+    [] -> state
+    latestSnapshot : remainingSnapshots ->
+      let currentSnapshot = boardSnapshot state
+       in deselect
+            state
+              { values = latestSnapshot.snapshotValues,
+                fixedCells = latestSnapshot.snapshotFixedCells,
+                undoHistory = remainingSnapshots,
+                redoHistory = currentSnapshot : state.redoHistory
+              }
+
+redoLastBoardChange :: GameState -> GameState
+redoLastBoardChange state =
+  case state.redoHistory of
+    [] -> state
+    latestSnapshot : remainingSnapshots ->
+      let currentSnapshot = boardSnapshot state
+       in deselect
+            state
+              { values = latestSnapshot.snapshotValues,
+                fixedCells = latestSnapshot.snapshotFixedCells,
+                undoHistory = currentSnapshot : state.undoHistory,
+                redoHistory = remainingSnapshots
+              }
+
+boardSnapshot :: GameState -> BoardSnapshot
+boardSnapshot state =
+  BoardSnapshot
+    { snapshotValues = state.values,
+      snapshotFixedCells = state.fixedCells
+    }
+
+recordUndoIfBoardChanged :: GameState -> GameState -> GameState
+recordUndoIfBoardChanged previousState updatedState
+  | boardSnapshot previousState == boardSnapshot updatedState = updatedState
+  | otherwise =
+      updatedState
+        { undoHistory = boardSnapshot previousState : previousState.undoHistory,
+          redoHistory = []
+        }
 
 toggleCellDigit :: KeypadPos -> Int -> Map KeypadPos Int -> Map KeypadPos Int
 toggleCellDigit cell digit currentValues =
@@ -251,17 +317,30 @@ valueKeyToDigit key =
 
 render :: GameState -> Image
 render state =
-  vertCat
-    [ renderBoard state,
-      string defAttr "",
-      string (messageAttr state) (statusText state),
-      string defAttr "Select: u i o / j k l / m , .",
-      string defAttr "Value:  u i o / j k l / m , .    n=clear value, h=deselect, F2=paste board, q/Esc=quit"
-    ]
+  let context = renderContext state
+   in vertCat
+        [ renderBoard context state,
+          string defAttr "",
+          string (messageAttr context state) (statusTextWithContext context state),
+          string defAttr "Select: u i o / j k l / m , .",
+          string defAttr "Value:  u i o / j k l / m , .    y=undo, p=redo, n=clear value, h=deselect, F2=paste board, q/Esc=quit"
+        ]
+
+renderContext :: GameState -> RenderContext
+renderContext state =
+  let currentConflicts = conflictingCells state
+   in RenderContext
+        { solved = isSolvedFromConflicts state currentConflicts,
+          conflicts = currentConflicts
+        }
 
 statusText :: GameState -> String
 statusText state =
-  if isSolved state
+  statusTextWithContext (renderContext state) state
+
+statusTextWithContext :: RenderContext -> GameState -> String
+statusTextWithContext context state =
+  if context.solved
     then "Solved!"
     else case state.statusMessage of
       Just (StatusInfo message) -> message
@@ -272,9 +351,9 @@ statusText state =
           SelectCell -> "Step 2/3: select cell inside highlighted quadrant"
           SelectValue -> "Step 3/3: select value key (toggle)"
 
-messageAttr :: GameState -> Attr
-messageAttr state =
-  if isSolved state
+messageAttr :: RenderContext -> GameState -> Attr
+messageAttr context state =
+  if context.solved
     then defAttr `withForeColor` green
     else case state.statusMessage of
       Nothing -> defAttr
@@ -292,14 +371,16 @@ loadBoardFromClipboard state = do
           }
       Right boardValues ->
         let fixed = Map.keysSet boardValues
-         in state
-              { phase = SelectQuadrant,
-                selectedQuadrant = Nothing,
-                selectedCell = Nothing,
-                values = boardValues,
-                fixedCells = fixed,
-                statusMessage = Just (StatusInfo "Loaded board from clipboard.")
-              }
+            updatedState =
+              state
+                { phase = SelectQuadrant,
+                  selectedQuadrant = Nothing,
+                  selectedCell = Nothing,
+                  values = boardValues,
+                  fixedCells = fixed,
+                  statusMessage = Just (StatusInfo "Loaded board from clipboard.")
+                }
+         in recordUndoIfBoardChanged state updatedState
 
 readClipboard :: IO (Either String String)
 readClipboard = do
@@ -393,17 +474,17 @@ parseCell rowIndex (colIndex, cellChar)
             ++ " (use digits 1-9 or spaces)"
         )
 
-renderBoard :: GameState -> Image
-renderBoard state =
+renderBoard :: RenderContext -> GameState -> Image
+renderBoard context state =
   vertCat
-    [ renderLine state y line
+    [ renderLine context state y line
       | (y, line) <- zip [0 ..] boardLines
     ]
 
-renderLine :: GameState -> Int -> String -> Image
-renderLine state y line =
+renderLine :: RenderContext -> GameState -> Int -> String -> Image
+renderLine context state y line =
   horizCat
-    [ char (attrFor state x y baseChar) (charAt state x y baseChar)
+    [ char (attrFor context state x y baseChar) (charAt state x y baseChar)
       | (x, baseChar) <- zip [0 ..] line
     ]
 
@@ -419,16 +500,16 @@ charAt state x y baseChar =
             then ' '
             else baseChar
 
-attrFor :: GameState -> Int -> Int -> Char -> Attr
-attrFor state x y baseChar
-  | isConflictAt state x y = highlightedBase `withForeColor` red
+attrFor :: RenderContext -> GameState -> Int -> Int -> Char -> Attr
+attrFor context state x y baseChar
+  | isConflictAt context.conflicts x y = highlightedBase `withForeColor` red
   | isFixedCellAt state x y = highlightedBase `withForeColor` white
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
   | otherwise = highlightedBase
   where
     highlightedBase
-      | isSolved state && isBorderChar baseChar = baseAttr `withForeColor` green
+      | context.solved && isBorderChar baseChar = baseAttr `withForeColor` green
       | inSelectedCell state x y = cellAttr
       | onQuadrantBorder state x y = borderAttr
       | otherwise = baseAttr
@@ -448,11 +529,11 @@ isFixedCellAt state x y =
     Nothing -> False
     Just cell -> Set.member cell state.fixedCells
 
-isConflictAt :: GameState -> Int -> Int -> Bool
-isConflictAt state x y =
+isConflictAt :: Set KeypadPos -> Int -> Int -> Bool
+isConflictAt conflictsAtFrame x y =
   case cellAtDisplayCoord x y of
     Nothing -> False
-    Just cell -> Set.member cell (conflictingCells state)
+    Just cell -> Set.member cell conflictsAtFrame
 
 hasCandidateAt :: GameState -> Int -> Int -> Bool
 hasCandidateAt state x y =
@@ -585,9 +666,12 @@ conflictingCells state =
     sameBox left right = left.row `div` 3 == right.row `div` 3 && left.col `div` 3 == right.col `div` 3
 
 isSolved :: GameState -> Bool
-isSolved state =
+isSolved state = isSolvedFromConflicts state (conflictingCells state)
+
+isSolvedFromConflicts :: GameState -> Set KeypadPos -> Bool
+isSolvedFromConflicts state currentConflicts =
   Map.size state.values == 81
-    && Set.null (conflictingCells state)
+    && Set.null currentConflicts
 
 inSelectedCell :: GameState -> Int -> Int -> Bool
 inSelectedCell state x y =

@@ -149,6 +149,59 @@ spec = do
       cleared.selectedQuadrant `shouldBe` Nothing
       cleared.selectedCell `shouldBe` Nothing
 
+    it "undoes board edits with y all the way back to the initial board" $ do
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          state3 = Keydoku.handleKey 'm' state2
+          state4 = Keydoku.handleKey 'u' state3
+          state5 = Keydoku.handleKey 'k' state4
+          state6 = Keydoku.handleKey 'k' state5
+          state7 = Keydoku.handleKey 'u' state6
+          state8 = Keydoku.handleKey 'k' state7
+          state9 = Keydoku.handleKey 'n' state8
+          state10 = Keydoku.handleKey 'k' state9
+          state11 = Keydoku.handleKey 'k' state10
+          state12 = Keydoku.handleKey 'o' state11
+          undo1 = Keydoku.handleKey 'y' state12
+          undo2 = Keydoku.handleKey 'y' undo1
+          undo3 = Keydoku.handleKey 'y' undo2
+          undo4 = Keydoku.handleKey 'y' undo3
+      Keydoku.cellValueAt undo1 (Keydoku.KeypadPos 4 4) `shouldBe` Nothing
+      Keydoku.cellValueAt undo1 (Keydoku.KeypadPos 1 1) `shouldBe` Nothing
+      Keydoku.cellValueAt undo1 (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
+      Keydoku.cellValueAt undo2 (Keydoku.KeypadPos 1 1) `shouldBe` Just 5
+      Keydoku.cellValueAt undo2 (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
+      Keydoku.cellValueAt undo3 (Keydoku.KeypadPos 1 1) `shouldBe` Nothing
+      Keydoku.cellValueAt undo3 (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
+      undo4.values `shouldBe` Keydoku.initialState.values
+      undo4.phase `shouldBe` Keydoku.SelectQuadrant
+      undo4.selectedQuadrant `shouldBe` Nothing
+      undo4.selectedCell `shouldBe` Nothing
+
+    it "ignores undo when no move has been made" $ do
+      Keydoku.handleKey 'y' Keydoku.initialState `shouldBe` Keydoku.initialState
+
+    it "redoes board edits with p after undo" $ do
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          state3 = Keydoku.handleKey 'm' state2
+          undone = Keydoku.handleKey 'y' state3
+          redone = Keydoku.handleKey 'p' undone
+      Keydoku.cellValueAt undone (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
+      Keydoku.cellValueAt redone (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
+
+    it "clears redo history after a new edit" $ do
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          state3 = Keydoku.handleKey 'm' state2
+          undone = Keydoku.handleKey 'y' state3
+          state4 = Keydoku.handleKey 'u' undone
+          state5 = Keydoku.handleKey 'k' state4
+          changed = Keydoku.handleKey 'k' state5
+          redoIgnored = Keydoku.handleKey 'p' changed
+      Keydoku.cellValueAt changed (Keydoku.KeypadPos 1 1) `shouldBe` Just 5
+      redoIgnored `shouldBe` changed
+
   describe "fixed cells" $ do
     it "does not clear a fixed cell with n" $ do
       let cell = Keydoku.KeypadPos 0 0
