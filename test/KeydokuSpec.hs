@@ -1,5 +1,6 @@
 module KeydokuSpec (spec) where
 
+import Data.Map.Strict qualified as Map
 import Keydoku qualified
 import Test.Hspec
 
@@ -13,7 +14,7 @@ spec = do
   describe "selectionKeypadPosition" $ do
     it "maps movement keys to keypad positions" $ do
       Keydoku.selectionKeypadPosition 'u' `shouldBe` Just (Keydoku.KeypadPos 0 0)
-      Keydoku.selectionKeypadPosition 'p' `shouldBe` Just (Keydoku.KeypadPos 0 2)
+      Keydoku.selectionKeypadPosition 'o' `shouldBe` Just (Keydoku.KeypadPos 0 2)
       Keydoku.selectionKeypadPosition '.' `shouldBe` Just (Keydoku.KeypadPos 2 2)
 
     it "ignores unsupported keys" $ do
@@ -27,11 +28,37 @@ spec = do
       Keydoku.valueKeyToDigit 'o' `shouldBe` Just 9
 
     it "ignores non-value keys" $ do
-      Keydoku.valueKeyToDigit 'p' `shouldBe` Nothing
+      Keydoku.valueKeyToDigit 'o' `shouldBe` Nothing
+
+  describe "auto candidates" $ do
+    it "shows keypad-layout candidates in empty cells" $ do
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 2 1 `shouldBe` Just 7
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 4 1 `shouldBe` Just 8
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 6 1 `shouldBe` Just 9
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 2 2 `shouldBe` Just 4
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 4 2 `shouldBe` Just 5
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 6 2 `shouldBe` Just 6
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 2 3 `shouldBe` Just 1
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 4 3 `shouldBe` Just 2
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 6 3 `shouldBe` Just 3
+
+    it "removes candidates blocked by Sudoku rules" $ do
+      let state =
+            Keydoku.initialState
+              { Keydoku.values =
+                  Map.fromList
+                    [ (Keydoku.KeypadPos 0 0, 5),
+                      (Keydoku.KeypadPos 1 1, 7),
+                      (Keydoku.KeypadPos 4 1, 3)
+                    ]
+              }
+      Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [5]
+      Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [7]
+      Keydoku.allowedDigitsAt state (Keydoku.KeypadPos 0 1) `shouldNotContain` [3]
 
   describe "handleKey" $ do
     it "follows quadrant -> cell -> value flow and toggles the digit" $ do
-      let state1 = Keydoku.handleKey 'p' Keydoku.initialState
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
       state1.phase `shouldBe` Keydoku.SelectCell
       state1.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 0 2)
 
@@ -45,16 +72,16 @@ spec = do
       state3.selectedCell `shouldBe` Nothing
       Keydoku.cellValueAt state3 (Keydoku.KeypadPos 1 7) `shouldBe` Just 9
 
-      let state4 = Keydoku.handleKey 'p' state3
+      let state4 = Keydoku.handleKey 'o' state3
           state5 = Keydoku.handleKey 'k' state4
           state6 = Keydoku.handleKey 'o' state5
       Keydoku.cellValueAt state6 (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
 
     it "clears selected cell value with n" $ do
-      let state1 = Keydoku.handleKey 'p' Keydoku.initialState
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
           state2 = Keydoku.handleKey 'k' state1
           state3 = Keydoku.handleKey 'o' state2
-          state4 = Keydoku.handleKey 'p' state3
+          state4 = Keydoku.handleKey 'o' state3
           state5 = Keydoku.handleKey 'k' state4
           cleared = Keydoku.handleKey 'n' state5
       Keydoku.cellValueAt cleared (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
@@ -63,7 +90,7 @@ spec = do
       cleared.selectedCell `shouldBe` Nothing
 
     it "clears selection with h" $ do
-      let state1 = Keydoku.handleKey 'p' Keydoku.initialState
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
           state2 = Keydoku.handleKey 'k' state1
           cleared = Keydoku.handleKey 'h' state2
       cleared.phase `shouldBe` Keydoku.SelectQuadrant

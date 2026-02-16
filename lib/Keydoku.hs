@@ -10,6 +10,7 @@ import Graphics.Vty
     Key (KChar, KEsc),
     Vty,
     black,
+    brightBlack,
     brightCyan,
     char,
     defAttr,
@@ -152,7 +153,7 @@ selectionKeypadPosition key =
   case key of
     'u' -> Just (KeypadPos 0 0)
     'i' -> Just (KeypadPos 0 1)
-    'p' -> Just (KeypadPos 0 2)
+    'o' -> Just (KeypadPos 0 2)
     'j' -> Just (KeypadPos 1 0)
     'k' -> Just (KeypadPos 1 1)
     'l' -> Just (KeypadPos 1 2)
@@ -196,25 +197,32 @@ renderBoard :: GameState -> Image
 renderBoard state =
   vertCat
     [ renderLine state y line
-      | (y, line) <- zip [0 ..] boardLines
+    | (y, line) <- zip [0 ..] boardLines
     ]
 
 renderLine :: GameState -> Int -> String -> Image
 renderLine state y line =
   horizCat
     [ char (attrFor state x y) (charAt state x y baseChar)
-      | (x, baseChar) <- zip [0 ..] line
+    | (x, baseChar) <- zip [0 ..] line
     ]
 
 charAt :: GameState -> Int -> Int -> Char -> Char
 charAt state x y baseChar =
   case valueAtDisplayCoord state x y of
-    Nothing -> baseChar
     Just value -> intToDigit value
+    Nothing ->
+      case candidateAtDisplayCoord state x y of
+        Just candidate -> intToDigit candidate
+        Nothing ->
+          if baseChar == '.'
+            then ' '
+            else baseChar
 
 attrFor :: GameState -> Int -> Int -> Attr
 attrFor state x y
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` brightCyan
+  | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
   | otherwise = highlightedBase
   where
     highlightedBase
@@ -228,6 +236,12 @@ hasPlacedValueAt state x y =
     Nothing -> False
     Just _ -> True
 
+hasCandidateAt :: GameState -> Int -> Int -> Bool
+hasCandidateAt state x y =
+  case candidateAtDisplayCoord state x y of
+    Nothing -> False
+    Just _ -> True
+
 valueAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
 valueAtDisplayCoord state x y
   | x < 4 || y < 2 = Nothing
@@ -238,6 +252,85 @@ valueAtDisplayCoord state x y
   where
     cellCol = (x - 4) `div` 8
     cellRow = (y - 2) `div` 4
+
+candidateAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
+candidateAtDisplayCoord state x y = do
+  (cellPos, candidateDigit) <- candidateSlotAtDisplayCoord x y
+  if hasValueAt state cellPos
+    then Nothing
+    else
+      if candidateDigit `elem` allowedDigitsAt state cellPos
+        then Just candidateDigit
+        else Nothing
+
+candidateSlotAtDisplayCoord :: Int -> Int -> Maybe (KeypadPos, Int)
+candidateSlotAtDisplayCoord x y
+  | x < 2 || y < 1 = Nothing
+  | xRel == 6 || xRel == 7 = Nothing
+  | yRel == 3 = Nothing
+  | xRel `mod` 2 /= 0 = Nothing
+  | cellRow > 8 || cellCol > 8 = Nothing
+  | otherwise =
+      Just
+        ( KeypadPos cellRow cellCol,
+          digitAtCandidatePos candRow candCol
+        )
+  where
+    xOffset = x - 2
+    yOffset = y - 1
+    xRel = xOffset `mod` 8
+    yRel = yOffset `mod` 4
+    candCol = xRel `div` 2
+    candRow = yRel
+    cellCol = xOffset `div` 8
+    cellRow = yOffset `div` 4
+
+digitAtCandidatePos :: Int -> Int -> Int
+digitAtCandidatePos candRow candCol =
+  case candRow of
+    0 -> 7 + candCol
+    1 -> 4 + candCol
+    2 -> 1 + candCol
+    _ -> 0
+
+hasValueAt :: GameState -> KeypadPos -> Bool
+hasValueAt state cell =
+  case cellValueAt state cell of
+    Nothing -> False
+    Just _ -> True
+
+allowedDigitsAt :: GameState -> KeypadPos -> [Int]
+allowedDigitsAt state cell
+  | hasValueAt state cell = []
+  | otherwise =
+      [ digit
+      | digit <- [1 .. 9],
+        not (digit `elem` usedDigits)
+      ]
+  where
+    usedDigits = rowDigits state cell ++ colDigits state cell ++ boxDigits state cell
+
+rowDigits :: GameState -> KeypadPos -> [Int]
+rowDigits state cell =
+  [ value
+  | (KeypadPos valueRow _valueCol, value) <- Map.toList state.values,
+    valueRow == cell.row
+  ]
+
+colDigits :: GameState -> KeypadPos -> [Int]
+colDigits state cell =
+  [ value
+  | (KeypadPos _valueRow valueCol, value) <- Map.toList state.values,
+    valueCol == cell.col
+  ]
+
+boxDigits :: GameState -> KeypadPos -> [Int]
+boxDigits state cell =
+  [ value
+  | (KeypadPos valueRow valueCol, value) <- Map.toList state.values,
+    valueRow `div` 3 == cell.row `div` 3,
+    valueCol `div` 3 == cell.col `div` 3
+  ]
 
 inSelectedCell :: GameState -> Int -> Int -> Bool
 inSelectedCell state x y =
@@ -300,14 +393,14 @@ contentLine =
     ++ concat
       [ cellRow blockCol
           ++ if blockCol < 2 then "║" else ""
-        | blockCol <- [0 .. 2]
+      | blockCol <- [0 .. 2]
       ]
     ++ "║"
   where
     cellRow _blockCol =
       concat
         [ " . . . " ++ if colInBlock < 2 then "│" else ""
-          | colInBlock <- [0 .. 2]
+        | colInBlock <- [0 .. 2]
         ]
 
 makeSeparator :: Char -> Char -> Char -> Char -> Char -> String
@@ -316,12 +409,12 @@ makeSeparator left right minorCross majorCross fill =
     ++ concat
       [ chunk blockCol
           ++ if blockCol < 2 then [majorCross] else ""
-        | blockCol <- [0 .. 2]
+      | blockCol <- [0 .. 2]
       ]
     ++ [right]
   where
     chunk _blockCol =
       concat
         [ replicate 7 fill ++ if colInBlock < 2 then [minorCross] else ""
-          | colInBlock <- [0 .. 2]
+        | colInBlock <- [0 .. 2]
         ]

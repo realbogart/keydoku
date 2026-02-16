@@ -73,6 +73,7 @@ test-suite keydoku-test
     main-is:          Main.hs
     other-modules:    KeydokuSpec
     build-depends:    base,
+                      containers,
                       keydoku,
                       hspec,
                       QuickCheck
