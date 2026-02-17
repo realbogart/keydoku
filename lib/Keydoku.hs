@@ -281,9 +281,14 @@ selectValue digit state =
           InsertValues
             | selectedCellIsFixed -> deselect state
             | otherwise ->
-                (clearSelection (toggleSelectedValue digit state))
-                  { highlightedDigit = Just digit
-                  }
+                let stateAfterInsert = clearSelection (toggleSelectedValue digit state)
+                    persistentHighlight =
+                      if isSolved stateAfterInsert
+                        then Nothing
+                        else Just digit
+                 in stateAfterInsert
+                      { highlightedDigit = persistentHighlight
+                      }
           RemoveCandidates ->
             (clearSelection (toggleSelectedCandidateRemoval digit state))
               { highlightedDigit = state.highlightedDigit

@@ -271,6 +271,21 @@ spec = do
       deselected.highlightedDigit `shouldBe` Nothing
       Keydoku.hasSelectedValueFrameAt deselected 58 5 `shouldBe` False
 
+    it "clears value-match highlight when the board becomes solved" $ do
+      let solvedBoard = Keydoku.generateSolvedBoard 12345
+          finalCell = Keydoku.KeypadPos 8 8
+          finalDigit = solvedBoard Map.! finalCell
+          state =
+            Keydoku.initialState
+              { Keydoku.phase = Keydoku.SelectValue,
+                Keydoku.selectedCell = Just finalCell,
+                Keydoku.values = Map.delete finalCell solvedBoard
+              }
+          solvedState = Keydoku.selectValue finalDigit state
+      Keydoku.isSolved solvedState `shouldBe` True
+      solvedState.highlightedDigit `shouldBe` Nothing
+      Keydoku.hasSelectedValueFrameAt solvedState 58 5 `shouldBe` False
+
     it "clears persistent value-match highlight when starting a new selection" $ do
       let state1 = Keydoku.handleKey '9' Keydoku.initialState
           state2 = Keydoku.handleKey '5' state1
