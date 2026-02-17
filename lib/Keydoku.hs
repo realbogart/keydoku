@@ -713,18 +713,22 @@ renderLine context state y line =
 
 charAt :: GameState -> Int -> Int -> Char -> Char
 charAt state x y baseChar =
-  case valueAtDisplayCoord state x y of
-    Just value -> intToDigit value
+  case selectedValueFrameCharAt state x y of
+    Just frameChar -> frameChar
     Nothing ->
-      case candidateAtDisplayCoord state x y of
-        Just candidate -> intToDigit candidate
+      case valueAtDisplayCoord state x y of
+        Just value -> intToDigit value
         Nothing ->
-          if baseChar == '.'
-            then ' '
-            else baseChar
+          case candidateAtDisplayCoord state x y of
+            Just candidate -> intToDigit candidate
+            Nothing ->
+              if baseChar == '.'
+                then ' '
+                else baseChar
 
 attrFor :: RenderContext -> GameState -> Int -> Int -> Char -> Attr
 attrFor context state x y baseChar
+  | hasSelectedValueFrameAt state x y = highlightedBase `withForeColor` cyan
   | isConflictAt context.conflicts x y = highlightedBase `withForeColor` red
   | isFixedCellAt state x y = highlightedBase `withForeColor` white
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
@@ -736,7 +740,6 @@ attrFor context state x y baseChar
       | otherwise = baseAttr
     highlightedBase
       | context.solved && isBorderChar baseChar = unhighlightedBaseAttr `withForeColor` green
-      | onSelectedValueMatchBorder state x y = matchBorderAttr
       | onSelectedCellBorder state x y = cellBorderAttr
       | onQuadrantBorder state x y = borderAttr
       | otherwise = unhighlightedBaseAttr
@@ -784,8 +787,7 @@ selectedValueMatchCells state =
       Set.fromList
         [ cell
           | (cell, value) <- Map.toList state.values,
-            value == highlighted,
-            Just cell /= state.selectedCell
+            value == highlighted
         ]
 
 activeHighlightedDigit :: GameState -> Maybe Int
@@ -799,6 +801,39 @@ isSelectedValueMatchAt state x y =
   case (selectedFilledValue state, valueAtDisplayCoord state x y) of
     (Just selectedValue, Just value) -> selectedValue == value
     _ -> False
+
+selectedValueFrameCharAt :: GameState -> Int -> Int -> Maybe Char
+selectedValueFrameCharAt state x y = do
+  cell <- cellAtDisplayCoord x y
+  if Set.member cell (selectedValueMatchCells state)
+    then frameCharAtCell cell x y
+    else Nothing
+
+hasSelectedValueFrameAt :: GameState -> Int -> Int -> Bool
+hasSelectedValueFrameAt state x y =
+  case selectedValueFrameCharAt state x y of
+    Just _ -> True
+    Nothing -> False
+
+frameCharAtCell :: KeypadPos -> Int -> Int -> Maybe Char
+frameCharAtCell cell x y =
+  case (x - centerX, y - centerY) of
+    (-2, -1) -> Just '┌'
+    (-1, -1) -> Just '─'
+    (0, -1) -> Just '─'
+    (1, -1) -> Just '─'
+    (2, -1) -> Just '┐'
+    (-2, 0) -> Just '│'
+    (2, 0) -> Just '│'
+    (-2, 1) -> Just '└'
+    (-1, 1) -> Just '─'
+    (0, 1) -> Just '─'
+    (1, 1) -> Just '─'
+    (2, 1) -> Just '┘'
+    _ -> Nothing
+  where
+    centerX = cell.col * 8 + 4
+    centerY = cell.row * 4 + 2
 
 valueAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
 valueAtDisplayCoord state x y
@@ -951,20 +986,6 @@ onSelectedCellBorder state x y =
          in ((x >= xLeft && x <= xRight) && onTopOrBottom)
               || ((y >= yTop && y <= yBottom) && onLeftOrRight)
 
-onSelectedValueMatchBorder :: GameState -> Int -> Int -> Bool
-onSelectedValueMatchBorder state x y =
-  any (pointOnCellBorder x y) (Set.toList (selectedValueMatchCells state))
-  where
-    pointOnCellBorder px py cell =
-      let xLeft = cell.col * 8
-          xRight = (cell.col + 1) * 8
-          yTop = cell.row * 4
-          yBottom = (cell.row + 1) * 4
-          onTopOrBottom = py == yTop || py == yBottom
-          onLeftOrRight = px == xLeft || px == xRight
-       in ((px >= xLeft && px <= xRight) && onTopOrBottom)
-            || ((py >= yTop && py <= yBottom) && onLeftOrRight)
-
 onQuadrantBorder :: GameState -> Int -> Int -> Bool
 onQuadrantBorder state x y =
   state.phase == SelectCell
@@ -988,9 +1009,6 @@ borderAttr = baseAttr `withForeColor` yellow
 
 cellBorderAttr :: Attr
 cellBorderAttr = baseAttr `withForeColor` yellow
-
-matchBorderAttr :: Attr
-matchBorderAttr = baseAttr `withForeColor` cyan
 
 boardLines :: [String]
 boardLines = topLine : concatMap rowGroup [0 .. 8] ++ [bottomLine]

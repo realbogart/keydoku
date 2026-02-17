@@ -157,9 +157,9 @@ spec = do
       Keydoku.isSelectedValueMatchAt state 4 2 `shouldBe` True
       Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` True
       Keydoku.isSelectedValueMatchAt state 20 10 `shouldBe` False
-      Keydoku.onSelectedValueMatchBorder state 0 0 `shouldBe` False
-      Keydoku.onSelectedValueMatchBorder state 16 4 `shouldBe` True
-      Keydoku.onSelectedValueMatchBorder state 19 5 `shouldBe` False
+      Keydoku.hasSelectedValueFrameAt state 2 1 `shouldBe` True
+      Keydoku.hasSelectedValueFrameAt state 18 5 `shouldBe` True
+      Keydoku.hasSelectedValueFrameAt state 20 6 `shouldBe` False
 
     it "does not match values when selected cell is empty" $ do
       let state =
@@ -170,7 +170,7 @@ spec = do
               }
       Keydoku.selectedFilledValue state `shouldBe` Nothing
       Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` False
-      Keydoku.onSelectedValueMatchBorder state 16 4 `shouldBe` False
+      Keydoku.hasSelectedValueFrameAt state 18 5 `shouldBe` False
 
   describe "selection border highlighting" $ do
     it "shows quadrant border only while selecting a cell" $ do
@@ -265,11 +265,11 @@ spec = do
           state2 = Keydoku.handleKey '5' state1
           state3 = Keydoku.handleKey '9' state2
       state3.highlightedDigit `shouldBe` Just 9
-      Keydoku.onSelectedValueMatchBorder state3 56 4 `shouldBe` True
+      Keydoku.hasSelectedValueFrameAt state3 58 5 `shouldBe` True
 
       let deselected = Keydoku.handleKey '0' state3
       deselected.highlightedDigit `shouldBe` Nothing
-      Keydoku.onSelectedValueMatchBorder deselected 56 4 `shouldBe` False
+      Keydoku.hasSelectedValueFrameAt deselected 58 5 `shouldBe` False
 
     it "clears persistent value-match highlight when starting a new selection" $ do
       let state1 = Keydoku.handleKey '9' Keydoku.initialState
