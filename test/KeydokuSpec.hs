@@ -209,6 +209,7 @@ spec = do
       state3.phase `shouldBe` Keydoku.SelectQuadrant
       state3.selectedQuadrant `shouldBe` Nothing
       state3.selectedCell `shouldBe` Nothing
+      state3.highlightedDigit `shouldBe` Just 9
       Keydoku.cellValueAt state3 (Keydoku.KeypadPos 1 7) `shouldBe` Just 9
 
     it "follows quadrant -> cell -> value flow and toggles the digit" $ do
@@ -258,6 +259,27 @@ spec = do
       cleared.phase `shouldBe` Keydoku.SelectQuadrant
       cleared.selectedQuadrant `shouldBe` Nothing
       cleared.selectedCell `shouldBe` Nothing
+
+    it "keeps value-match highlight after entering a value and clears it with deselect" $ do
+      let state1 = Keydoku.handleKey '9' Keydoku.initialState
+          state2 = Keydoku.handleKey '5' state1
+          state3 = Keydoku.handleKey '9' state2
+      state3.highlightedDigit `shouldBe` Just 9
+      Keydoku.onSelectedValueMatchBorder state3 56 4 `shouldBe` True
+
+      let deselected = Keydoku.handleKey '0' state3
+      deselected.highlightedDigit `shouldBe` Nothing
+      Keydoku.onSelectedValueMatchBorder deselected 56 4 `shouldBe` False
+
+    it "clears persistent value-match highlight when starting a new selection" $ do
+      let state1 = Keydoku.handleKey '9' Keydoku.initialState
+          state2 = Keydoku.handleKey '5' state1
+          state3 = Keydoku.handleKey '9' state2
+          state4 = Keydoku.handleKey '7' state3
+      state3.highlightedDigit `shouldBe` Just 9
+      state4.phase `shouldBe` Keydoku.SelectCell
+      state4.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 0 0)
+      state4.highlightedDigit `shouldBe` Nothing
 
     it "undoes board edits with y all the way back to the initial board" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState

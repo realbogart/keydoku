@@ -60,6 +60,7 @@ data GameState = GameState
   { phase :: SelectionPhase,
     selectedQuadrant :: Maybe KeypadPos,
     selectedCell :: Maybe KeypadPos,
+    highlightedDigit :: Maybe Int,
     insertionMode :: InsertionMode,
     values :: Map KeypadPos Int,
     removedCandidates :: Map KeypadPos (Set Int),
@@ -100,6 +101,7 @@ initialState =
     { phase = SelectQuadrant,
       selectedQuadrant = Nothing,
       selectedCell = Nothing,
+      highlightedDigit = Nothing,
       insertionMode = InsertValues,
       values = Map.empty,
       removedCandidates = Map.empty,
@@ -227,20 +229,25 @@ handleKey key state
 clearStatusMessage :: GameState -> GameState
 clearStatusMessage state = state {statusMessage = Nothing}
 
-deselect :: GameState -> GameState
-deselect state =
+clearSelection :: GameState -> GameState
+clearSelection state =
   state
     { phase = SelectQuadrant,
       selectedQuadrant = Nothing,
       selectedCell = Nothing
     }
 
+deselect :: GameState -> GameState
+deselect state =
+  (clearSelection state) {highlightedDigit = Nothing}
+
 selectQuadrant :: KeypadPos -> GameState -> GameState
 selectQuadrant pos state =
   state
     { phase = SelectCell,
       selectedQuadrant = Just pos,
-      selectedCell = Nothing
+      selectedCell = Nothing,
+      highlightedDigit = Nothing
     }
 
 selectCell :: KeypadPos -> GameState -> GameState
@@ -265,11 +272,17 @@ toggleSelectedValue digit state =
 
 selectValue :: Int -> GameState -> GameState
 selectValue digit state =
-  let updatedState =
-        deselect $
-          case state.insertionMode of
-            InsertValues -> toggleSelectedValue digit state
-            RemoveCandidates -> toggleSelectedCandidateRemoval digit state
+  let boardUpdatedState =
+        case state.insertionMode of
+          InsertValues -> toggleSelectedValue digit state
+          RemoveCandidates -> toggleSelectedCandidateRemoval digit state
+      updatedState =
+        (clearSelection boardUpdatedState)
+          { highlightedDigit =
+              case state.insertionMode of
+                InsertValues -> Just digit
+                RemoveCandidates -> state.highlightedDigit
+          }
    in recordUndoIfBoardChanged state updatedState
 
 toggleInsertionMode :: GameState -> GameState
@@ -308,9 +321,9 @@ clearSelectedCellValue state =
   let updatedState =
         case state.selectedCell of
           Nothing -> state
-          Just cell | Set.member cell state.fixedCells -> deselect state
+          Just cell | Set.member cell state.fixedCells -> clearSelection state
           Just cell ->
-            deselect
+            clearSelection
               state
                 { values = Map.delete cell state.values
                 }
@@ -754,15 +767,21 @@ selectedFilledValue state = do
 
 selectedValueMatchCells :: GameState -> Set KeypadPos
 selectedValueMatchCells state =
-  case selectedFilledValue state of
+  case activeHighlightedDigit state of
     Nothing -> Set.empty
-    Just selectedValue ->
+    Just highlighted ->
       Set.fromList
         [ cell
           | (cell, value) <- Map.toList state.values,
-            value == selectedValue,
+            value == highlighted,
             Just cell /= state.selectedCell
         ]
+
+activeHighlightedDigit :: GameState -> Maybe Int
+activeHighlightedDigit state =
+  case state.highlightedDigit of
+    Just digit -> Just digit
+    Nothing -> selectedFilledValue state
 
 isSelectedValueMatchAt :: GameState -> Int -> Int -> Bool
 isSelectedValueMatchAt state x y =
@@ -923,8 +942,7 @@ onSelectedCellBorder state x y =
 
 onSelectedValueMatchBorder :: GameState -> Int -> Int -> Bool
 onSelectedValueMatchBorder state x y =
-  state.phase == SelectValue
-    && any (pointOnCellBorder x y) (Set.toList (selectedValueMatchCells state))
+  any (pointOnCellBorder x y) (Set.toList (selectedValueMatchCells state))
   where
     pointOnCellBorder px py cell =
       let xLeft = cell.col * 8
