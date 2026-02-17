@@ -1004,16 +1004,16 @@ boardLines = topLine : concatMap rowGroup [0 .. 8] ++ [bottomLine]
        in rows ++ separator
 
 topLine :: String
-topLine = makeSeparator '╔' '╗' '╤' '╦' '═'
+topLine = makeSeparator '╔' '╗' '═' '╦' '═'
 
 bottomLine :: String
-bottomLine = makeSeparator '╚' '╝' '╧' '╩' '═'
+bottomLine = makeSeparator '╚' '╝' '═' '╩' '═'
 
 majorSeparatorLine :: String
-majorSeparatorLine = makeSeparator '╠' '╣' '╪' '╬' '═'
+majorSeparatorLine = makeSeparator '╠' '╣' '═' '╬' '═'
 
 minorSeparatorLine :: String
-minorSeparatorLine = makeSeparator '╟' '╢' '┼' '╫' '─'
+minorSeparatorLine = makeSeparator '║' '║' '┼' '║' '─'
 
 contentLine :: String
 contentLine =
