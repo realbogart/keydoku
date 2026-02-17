@@ -272,17 +272,22 @@ toggleSelectedValue digit state =
 
 selectValue :: Int -> GameState -> GameState
 selectValue digit state =
-  let boardUpdatedState =
-        case state.insertionMode of
-          InsertValues -> toggleSelectedValue digit state
-          RemoveCandidates -> toggleSelectedCandidateRemoval digit state
+  let selectedCellIsFixed =
+        case state.selectedCell of
+          Nothing -> False
+          Just cell -> Set.member cell state.fixedCells
       updatedState =
-        (clearSelection boardUpdatedState)
-          { highlightedDigit =
-              case state.insertionMode of
-                InsertValues -> Just digit
-                RemoveCandidates -> state.highlightedDigit
-          }
+        case state.insertionMode of
+          InsertValues
+            | selectedCellIsFixed -> deselect state
+            | otherwise ->
+                (clearSelection (toggleSelectedValue digit state))
+                  { highlightedDigit = Just digit
+                  }
+          RemoveCandidates ->
+            (clearSelection (toggleSelectedCandidateRemoval digit state))
+              { highlightedDigit = state.highlightedDigit
+              }
    in recordUndoIfBoardChanged state updatedState
 
 toggleInsertionMode :: GameState -> GameState

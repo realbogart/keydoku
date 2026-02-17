@@ -394,11 +394,16 @@ spec = do
             Keydoku.initialState
               { Keydoku.phase = Keydoku.SelectValue,
                 Keydoku.selectedCell = Just cell,
+                Keydoku.highlightedDigit = Just 7,
                 Keydoku.values = Map.fromList [(cell, 7)],
                 Keydoku.fixedCells = Set.fromList [cell]
               }
           updated = Keydoku.handleKey 'm' state
       Keydoku.cellValueAt updated cell `shouldBe` Just 7
+      updated.phase `shouldBe` Keydoku.SelectQuadrant
+      updated.selectedQuadrant `shouldBe` Nothing
+      updated.selectedCell `shouldBe` Nothing
+      updated.highlightedDigit `shouldBe` Nothing
 
   describe "parseClipboardBoard" $ do
     it "parses a valid 9x9 clipboard board with spaces as blanks" $ do
