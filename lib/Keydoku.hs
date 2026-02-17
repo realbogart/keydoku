@@ -708,7 +708,6 @@ charAt state x y baseChar =
 attrFor :: RenderContext -> GameState -> Int -> Int -> Char -> Attr
 attrFor context state x y baseChar
   | isConflictAt context.conflicts x y = highlightedBase `withForeColor` red
-  | isSelectedValueMatchAt state x y = highlightedBase `withForeColor` black `withBackColor` cyan
   | isFixedCellAt state x y = highlightedBase `withForeColor` white
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
@@ -716,6 +715,7 @@ attrFor context state x y baseChar
   where
     highlightedBase
       | context.solved && isBorderChar baseChar = baseAttr `withForeColor` green
+      | onSelectedValueMatchBorder state x y = matchBorderAttr
       | onSelectedCellBorder state x y = cellBorderAttr
       | onQuadrantBorder state x y = borderAttr
       | otherwise = baseAttr
@@ -751,6 +751,18 @@ selectedFilledValue :: GameState -> Maybe Int
 selectedFilledValue state = do
   selected <- state.selectedCell
   cellValueAt state selected
+
+selectedValueMatchCells :: GameState -> Set KeypadPos
+selectedValueMatchCells state =
+  case selectedFilledValue state of
+    Nothing -> Set.empty
+    Just selectedValue ->
+      Set.fromList
+        [ cell
+          | (cell, value) <- Map.toList state.values,
+            value == selectedValue,
+            Just cell /= state.selectedCell
+        ]
 
 isSelectedValueMatchAt :: GameState -> Int -> Int -> Bool
 isSelectedValueMatchAt state x y =
@@ -909,6 +921,21 @@ onSelectedCellBorder state x y =
          in ((x >= xLeft && x <= xRight) && onTopOrBottom)
               || ((y >= yTop && y <= yBottom) && onLeftOrRight)
 
+onSelectedValueMatchBorder :: GameState -> Int -> Int -> Bool
+onSelectedValueMatchBorder state x y =
+  state.phase == SelectValue
+    && any (pointOnCellBorder x y) (Set.toList (selectedValueMatchCells state))
+  where
+    pointOnCellBorder px py cell =
+      let xLeft = cell.col * 8
+          xRight = (cell.col + 1) * 8
+          yTop = cell.row * 4
+          yBottom = (cell.row + 1) * 4
+          onTopOrBottom = py == yTop || py == yBottom
+          onLeftOrRight = px == xLeft || px == xRight
+       in ((px >= xLeft && px <= xRight) && onTopOrBottom)
+            || ((py >= yTop && py <= yBottom) && onLeftOrRight)
+
 onQuadrantBorder :: GameState -> Int -> Int -> Bool
 onQuadrantBorder state x y =
   state.phase == SelectCell
@@ -932,6 +959,9 @@ borderAttr = baseAttr `withForeColor` yellow
 
 cellBorderAttr :: Attr
 cellBorderAttr = baseAttr `withForeColor` yellow
+
+matchBorderAttr :: Attr
+matchBorderAttr = baseAttr `withForeColor` cyan
 
 boardLines :: [String]
 boardLines = topLine : concatMap rowGroup [0 .. 8] ++ [bottomLine]

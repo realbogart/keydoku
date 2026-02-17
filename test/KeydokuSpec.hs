@@ -157,6 +157,9 @@ spec = do
       Keydoku.isSelectedValueMatchAt state 4 2 `shouldBe` True
       Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` True
       Keydoku.isSelectedValueMatchAt state 20 10 `shouldBe` False
+      Keydoku.onSelectedValueMatchBorder state 0 0 `shouldBe` False
+      Keydoku.onSelectedValueMatchBorder state 16 4 `shouldBe` True
+      Keydoku.onSelectedValueMatchBorder state 19 5 `shouldBe` False
 
     it "does not match values when selected cell is empty" $ do
       let state =
@@ -167,6 +170,7 @@ spec = do
               }
       Keydoku.selectedFilledValue state `shouldBe` Nothing
       Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` False
+      Keydoku.onSelectedValueMatchBorder state 16 4 `shouldBe` False
 
   describe "selection border highlighting" $ do
     it "shows quadrant border only while selecting a cell" $ do
