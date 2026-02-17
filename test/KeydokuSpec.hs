@@ -13,7 +13,12 @@ spec = do
       Keydoku.boardLines `shouldBe` lines template
 
   describe "selectionKeypadPosition" $ do
-    it "maps movement keys to keypad positions" $ do
+    it "maps numpad keys to keypad positions" $ do
+      Keydoku.selectionKeypadPosition '7' `shouldBe` Just (Keydoku.KeypadPos 0 0)
+      Keydoku.selectionKeypadPosition '9' `shouldBe` Just (Keydoku.KeypadPos 0 2)
+      Keydoku.selectionKeypadPosition '3' `shouldBe` Just (Keydoku.KeypadPos 2 2)
+
+    it "still supports legacy movement keys" $ do
       Keydoku.selectionKeypadPosition 'u' `shouldBe` Just (Keydoku.KeypadPos 0 0)
       Keydoku.selectionKeypadPosition 'o' `shouldBe` Just (Keydoku.KeypadPos 0 2)
       Keydoku.selectionKeypadPosition '.' `shouldBe` Just (Keydoku.KeypadPos 2 2)
@@ -23,7 +28,12 @@ spec = do
       Keydoku.selectionKeypadPosition 'p' `shouldBe` Nothing
 
   describe "valueKeyToDigit" $ do
-    it "maps numpad-like value keys" $ do
+    it "maps numpad digits to values" $ do
+      Keydoku.valueKeyToDigit '1' `shouldBe` Just 1
+      Keydoku.valueKeyToDigit '5' `shouldBe` Just 5
+      Keydoku.valueKeyToDigit '9' `shouldBe` Just 9
+
+    it "still maps legacy value keys" $ do
       Keydoku.valueKeyToDigit 'm' `shouldBe` Just 1
       Keydoku.valueKeyToDigit 'k' `shouldBe` Just 5
       Keydoku.valueKeyToDigit 'o' `shouldBe` Just 9
@@ -159,6 +169,21 @@ spec = do
       Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` False
 
   describe "handleKey" $ do
+    it "supports numpad keys for quadrant -> cell -> value flow" $ do
+      let state1 = Keydoku.handleKey '9' Keydoku.initialState
+      state1.phase `shouldBe` Keydoku.SelectCell
+      state1.selectedQuadrant `shouldBe` Just (Keydoku.KeypadPos 0 2)
+
+      let state2 = Keydoku.handleKey '5' state1
+      state2.phase `shouldBe` Keydoku.SelectValue
+      state2.selectedCell `shouldBe` Just (Keydoku.KeypadPos 1 7)
+
+      let state3 = Keydoku.handleKey '9' state2
+      state3.phase `shouldBe` Keydoku.SelectQuadrant
+      state3.selectedQuadrant `shouldBe` Nothing
+      state3.selectedCell `shouldBe` Nothing
+      Keydoku.cellValueAt state3 (Keydoku.KeypadPos 1 7) `shouldBe` Just 9
+
     it "follows quadrant -> cell -> value flow and toggles the digit" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState
       state1.phase `shouldBe` Keydoku.SelectCell
@@ -199,6 +224,14 @@ spec = do
       cleared.selectedQuadrant `shouldBe` Nothing
       cleared.selectedCell `shouldBe` Nothing
 
+    it "clears selection with 0" $ do
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          cleared = Keydoku.handleKey '0' state2
+      cleared.phase `shouldBe` Keydoku.SelectQuadrant
+      cleared.selectedQuadrant `shouldBe` Nothing
+      cleared.selectedCell `shouldBe` Nothing
+
     it "undoes board edits with y all the way back to the initial board" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState
           state2 = Keydoku.handleKey 'k' state1
@@ -230,6 +263,7 @@ spec = do
 
     it "ignores undo when no move has been made" $ do
       Keydoku.handleKey 'y' Keydoku.initialState `shouldBe` Keydoku.initialState
+      Keydoku.handleKey '-' Keydoku.initialState `shouldBe` Keydoku.initialState
 
     it "redoes board edits with p after undo" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState
@@ -237,6 +271,15 @@ spec = do
           state3 = Keydoku.handleKey 'm' state2
           undone = Keydoku.handleKey 'y' state3
           redone = Keydoku.handleKey 'p' undone
+      Keydoku.cellValueAt undone (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
+      Keydoku.cellValueAt redone (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
+
+    it "redoes board edits with * after undo" $ do
+      let state1 = Keydoku.handleKey 'o' Keydoku.initialState
+          state2 = Keydoku.handleKey 'k' state1
+          state3 = Keydoku.handleKey 'm' state2
+          undone = Keydoku.handleKey '-' state3
+          redone = Keydoku.handleKey '*' undone
       Keydoku.cellValueAt undone (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
       Keydoku.cellValueAt redone (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
 
@@ -263,6 +306,12 @@ spec = do
       Map.lookup targetCell state4.removedCandidates `shouldBe` Just (Set.fromList [1])
       state4.phase `shouldBe` Keydoku.SelectQuadrant
       Keydoku.handleKey ':' state4
+        `shouldSatisfy` \s -> s.insertionMode == Keydoku.InsertValues
+
+    it "toggles insertion mode with +" $ do
+      let state1 = Keydoku.handleKey '+' Keydoku.initialState
+      state1.insertionMode `shouldBe` Keydoku.RemoveCandidates
+      Keydoku.handleKey '+' state1
         `shouldSatisfy` \s -> s.insertionMode == Keydoku.InsertValues
 
     it "undoes and redoes manual candidate removals" $ do

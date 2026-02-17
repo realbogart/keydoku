@@ -13,7 +13,7 @@ import Graphics.Vty
   ( Attr,
     Event (EvKey),
     Image,
-    Key (KChar, KEsc, KFun),
+    Key (KChar, KDel, KEsc, KFun),
     Vty,
     black,
     brightBlack,
@@ -180,6 +180,7 @@ loop vty timer state = do
       updated <- startNewHardGame
       timerStarted <- getCurrentTime
       loop vty (TimerState timerStarted Nothing) updated
+    Just (EvKey KDel []) -> loop vty timerAtFrame (clearStatusMessage (clearSelectedCellValue state))
     Just (EvKey (KChar key) []) -> loop vty timerAtFrame (handleKey key state)
     Just _ -> loop vty timerAtFrame state
 
@@ -212,11 +213,11 @@ pad2 n
 
 handleKey :: Char -> GameState -> GameState
 handleKey key state
-  | key == 'h' = clearStatusMessage (deselect state)
-  | key == 'y' = clearStatusMessage (undoLastBoardChange state)
-  | key == 'p' = clearStatusMessage (redoLastBoardChange state)
+  | key == 'h' || key == '0' = clearStatusMessage (deselect state)
+  | key == 'y' || key == '-' = clearStatusMessage (undoLastBoardChange state)
+  | key == 'p' || key == '*' = clearStatusMessage (redoLastBoardChange state)
   | key == 'n' = clearStatusMessage (clearSelectedCellValue state)
-  | key == ':' || key == 'ö' = clearStatusMessage (toggleInsertionMode state)
+  | key == '+' || key == ':' || key == 'ö' = clearStatusMessage (toggleInsertionMode state)
   | otherwise =
       case state.phase of
         SelectQuadrant -> maybe state (clearStatusMessage . (`selectQuadrant` state)) (selectionKeypadPosition key)
@@ -381,6 +382,15 @@ absoluteCell quadrant cell =
 selectionKeypadPosition :: Char -> Maybe KeypadPos
 selectionKeypadPosition key =
   case key of
+    '7' -> Just (KeypadPos 0 0)
+    '8' -> Just (KeypadPos 0 1)
+    '9' -> Just (KeypadPos 0 2)
+    '4' -> Just (KeypadPos 1 0)
+    '5' -> Just (KeypadPos 1 1)
+    '6' -> Just (KeypadPos 1 2)
+    '1' -> Just (KeypadPos 2 0)
+    '2' -> Just (KeypadPos 2 1)
+    '3' -> Just (KeypadPos 2 2)
     'u' -> Just (KeypadPos 0 0)
     'i' -> Just (KeypadPos 0 1)
     'o' -> Just (KeypadPos 0 2)
@@ -395,6 +405,15 @@ selectionKeypadPosition key =
 valueKeyToDigit :: Char -> Maybe Int
 valueKeyToDigit key =
   case key of
+    '1' -> Just 1
+    '2' -> Just 2
+    '3' -> Just 3
+    '4' -> Just 4
+    '5' -> Just 5
+    '6' -> Just 6
+    '7' -> Just 7
+    '8' -> Just 8
+    '9' -> Just 9
     'm' -> Just 1
     ',' -> Just 2
     '.' -> Just 3
@@ -415,8 +434,8 @@ render elapsed state =
           string (messageAttr context state) (statusTextWithContext context state),
           string defAttr ("Time: " ++ formatElapsed elapsed),
           renderModeToggle state,
-          string defAttr "Select: u i o / j k l / m , .",
-          string defAttr "Value:  u i o / j k l / m , .    y=undo, p=redo, n=clear value, h=deselect, F2=new hard game, q/Esc=quit"
+          string defAttr "Select: 7 8 9 / 4 5 6 / 1 2 3",
+          string defAttr "Value:  7 8 9 / 4 5 6 / 1 2 3  Del=clear, -=undo, *=redo, +=toggle mode, 0=deselect, F2=new hard game, q/Esc=quit"
         ]
 
 renderModeToggle :: GameState -> Image
@@ -426,7 +445,7 @@ renderModeToggle state =
       modeChip (state.insertionMode == InsertValues) (defAttr `withForeColor` black `withBackColor` green) " INSERT NUMBERS ",
       string defAttr " ",
       modeChip (state.insertionMode == RemoveCandidates) (defAttr `withForeColor` white `withBackColor` red) " REMOVE CANDIDATES ",
-      string defAttr "  (: / ö to toggle)"
+      string defAttr "  (+ to toggle)"
     ]
 
 modeChip :: Bool -> Attr -> String -> Image
