@@ -36,8 +36,25 @@
           inherit (haskellNix) config;
         };
         flake = pkgs.keydoku.flake { };
+        windowsPackage =
+          if pkgs.stdenv.hostPlatform.isLinux then
+            let
+              pkgsWindows = import nixpkgs {
+                localSystem = system;
+                crossSystem = { config = "x86_64-w64-mingw32"; };
+                inherit overlays;
+                inherit (haskellNix) config;
+              };
+              keydokuWindows = pkgsWindows.haskell-nix.project' {
+                src = ./.;
+                compiler-nix-name = "ghc9101";
+                projectFileName = "cabal.project.windows";
+              };
+            in { windows = keydokuWindows.hsPkgs.keydoku.components.exes.keydoku; }
+          else
+            { };
       in flake // {
-        packages = flake.packages // {
+        packages = flake.packages // windowsPackage // {
           default = flake.packages."keydoku:exe:keydoku";
           container = pkgs.dockerTools.buildLayeredImage {
             name = "keydoku";
