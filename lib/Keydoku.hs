@@ -1007,7 +1007,7 @@ majorSeparatorLine :: String
 majorSeparatorLine = makeSeparator '╠' '╣' '╪' '╬' '═'
 
 minorSeparatorLine :: String
-minorSeparatorLine = makeSeparator '╟' '╢' '┼' '╫' '─'
+minorSeparatorLine = makeSeparator '╟' '╢' '┼' '╫' '┈'
 
 contentLine :: String
 contentLine =
@@ -1021,7 +1021,7 @@ contentLine =
   where
     cellRow _blockCol =
       concat
-        [ " . . . " ++ if colInBlock < 2 then "│" else ""
+        [ " . . . " ++ if colInBlock < 2 then "┊" else ""
           | colInBlock <- [0 .. 2]
         ]
 
