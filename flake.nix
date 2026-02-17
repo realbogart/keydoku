@@ -47,7 +47,7 @@
               };
               keydokuWindows = pkgsWindows.haskell-nix.project' {
                 src = ./.;
-                compiler-nix-name = "ghc9101";
+                compiler-nix-name = "ghc984";
                 projectFileName = "cabal.project.windows";
               };
             in { windows = keydokuWindows.hsPkgs.keydoku.components.exes.keydoku; }
