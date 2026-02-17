@@ -168,6 +168,29 @@ spec = do
       Keydoku.selectedFilledValue state `shouldBe` Nothing
       Keydoku.isSelectedValueMatchAt state 20 6 `shouldBe` False
 
+  describe "selection border highlighting" $ do
+    it "shows quadrant border only while selecting a cell" $ do
+      let selectingCellState =
+            Keydoku.initialState
+              { Keydoku.phase = Keydoku.SelectCell,
+                Keydoku.selectedQuadrant = Just (Keydoku.KeypadPos 1 1)
+              }
+          selectingValueState = selectingCellState {Keydoku.phase = Keydoku.SelectValue}
+      Keydoku.onQuadrantBorder selectingCellState 24 12 `shouldBe` True
+      Keydoku.onQuadrantBorder selectingCellState 30 18 `shouldBe` False
+      Keydoku.onQuadrantBorder selectingValueState 24 12 `shouldBe` False
+
+    it "shows cell border only while selecting a value" $ do
+      let selectingValueState =
+            Keydoku.initialState
+              { Keydoku.phase = Keydoku.SelectValue,
+                Keydoku.selectedCell = Just (Keydoku.KeypadPos 4 5)
+              }
+          selectingCellState = selectingValueState {Keydoku.phase = Keydoku.SelectCell}
+      Keydoku.onSelectedCellBorder selectingValueState 40 17 `shouldBe` True
+      Keydoku.onSelectedCellBorder selectingValueState 44 18 `shouldBe` False
+      Keydoku.onSelectedCellBorder selectingCellState 41 17 `shouldBe` False
+
   describe "handleKey" $ do
     it "supports numpad keys for quadrant -> cell -> value flow" $ do
       let state1 = Keydoku.handleKey '9' Keydoku.initialState

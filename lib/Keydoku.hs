@@ -122,7 +122,7 @@ mainWithBoardFile maybeBoardFile = do
 loadInitialState :: Maybe FilePath -> IO GameState
 loadInitialState maybeBoardFile =
   case maybeBoardFile of
-    Nothing -> pure initialState
+    Nothing -> startNewHardGame
     Just boardFile -> loadStateFromBoardFile boardFile
 
 loadStateFromBoardFile :: FilePath -> IO GameState
@@ -716,7 +716,7 @@ attrFor context state x y baseChar
   where
     highlightedBase
       | context.solved && isBorderChar baseChar = baseAttr `withForeColor` green
-      | inSelectedCell state x y = cellAttr
+      | onSelectedCellBorder state x y = cellBorderAttr
       | onQuadrantBorder state x y = borderAttr
       | otherwise = baseAttr
 
@@ -894,28 +894,35 @@ isSolvedFromConflicts state currentConflicts =
   Map.size state.values == 81
     && Set.null currentConflicts
 
-inSelectedCell :: GameState -> Int -> Int -> Bool
-inSelectedCell state x y =
-  case state.selectedCell of
-    Nothing -> False
-    Just cell ->
-      let xStart = 1 + cell.col * 8
-          yStart = 1 + cell.row * 4
-       in x >= xStart && x <= xStart + 6 && y >= yStart && y <= yStart + 2
+onSelectedCellBorder :: GameState -> Int -> Int -> Bool
+onSelectedCellBorder state x y =
+  state.phase == SelectValue
+    && case state.selectedCell of
+      Nothing -> False
+      Just cell ->
+        let xLeft = cell.col * 8
+            xRight = (cell.col + 1) * 8
+            yTop = cell.row * 4
+            yBottom = (cell.row + 1) * 4
+            onTopOrBottom = y == yTop || y == yBottom
+            onLeftOrRight = x == xLeft || x == xRight
+         in ((x >= xLeft && x <= xRight) && onTopOrBottom)
+              || ((y >= yTop && y <= yBottom) && onLeftOrRight)
 
 onQuadrantBorder :: GameState -> Int -> Int -> Bool
 onQuadrantBorder state x y =
-  case state.selectedQuadrant of
-    Nothing -> False
-    Just quadrant ->
-      let xLeft = quadrant.col * 24
-          xRight = (quadrant.col + 1) * 24
-          yTop = quadrant.row * 12
-          yBottom = (quadrant.row + 1) * 12
-          onTopOrBottom = y == yTop || y == yBottom
-          onLeftOrRight = x == xLeft || x == xRight
-       in ((x >= xLeft && x <= xRight) && onTopOrBottom)
-            || ((y >= yTop && y <= yBottom) && onLeftOrRight)
+  state.phase == SelectCell
+    && case state.selectedQuadrant of
+      Nothing -> False
+      Just quadrant ->
+        let xLeft = quadrant.col * 24
+            xRight = (quadrant.col + 1) * 24
+            yTop = quadrant.row * 12
+            yBottom = (quadrant.row + 1) * 12
+            onTopOrBottom = y == yTop || y == yBottom
+            onLeftOrRight = x == xLeft || x == xRight
+         in ((x >= xLeft && x <= xRight) && onTopOrBottom)
+              || ((y >= yTop && y <= yBottom) && onLeftOrRight)
 
 baseAttr :: Attr
 baseAttr = defAttr `withForeColor` white
@@ -923,8 +930,8 @@ baseAttr = defAttr `withForeColor` white
 borderAttr :: Attr
 borderAttr = baseAttr `withForeColor` yellow
 
-cellAttr :: Attr
-cellAttr = baseAttr `withForeColor` black `withBackColor` yellow
+cellBorderAttr :: Attr
+cellBorderAttr = baseAttr `withForeColor` yellow
 
 boardLines :: [String]
 boardLines = topLine : concatMap rowGroup [0 .. 8] ++ [bottomLine]
