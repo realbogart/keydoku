@@ -731,15 +731,21 @@ attrFor context state x y baseChar
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
   | otherwise = highlightedBase
   where
+    unhighlightedBaseAttr
+      | isMinorBorderChar baseChar = baseAttr `withForeColor` brightBlack
+      | otherwise = baseAttr
     highlightedBase
-      | context.solved && isBorderChar baseChar = baseAttr `withForeColor` green
+      | context.solved && isBorderChar baseChar = unhighlightedBaseAttr `withForeColor` green
       | onSelectedValueMatchBorder state x y = matchBorderAttr
       | onSelectedCellBorder state x y = cellBorderAttr
       | onQuadrantBorder state x y = borderAttr
-      | otherwise = baseAttr
+      | otherwise = unhighlightedBaseAttr
 
 isBorderChar :: Char -> Bool
 isBorderChar c = c /= '.' && c /= ' '
+
+isMinorBorderChar :: Char -> Bool
+isMinorBorderChar c = c == '│' || c == '─' || c == '┼'
 
 hasPlacedValueAt :: GameState -> Int -> Int -> Bool
 hasPlacedValueAt state x y =
