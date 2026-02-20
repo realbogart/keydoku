@@ -735,8 +735,8 @@ attrFor :: RenderContext -> GameState -> Int -> Int -> Char -> Attr
 attrFor context state x y baseChar
   | hasSelectedValueFrameAt state x y = highlightedBase `withForeColor` cyan
   | isConflictAt context.conflicts x y = highlightedBase `withForeColor` red
-  | isFixedCellAt state x y = highlightedBase `withForeColor` yellow
-  | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
+  | isFixedCellAt state x y = highlightedBase `withForeColor` white
+  | hasPlacedValueAt state x y = highlightedBase `withForeColor` yellow
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
   | otherwise = highlightedBase
   where
