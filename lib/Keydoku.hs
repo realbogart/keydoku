@@ -735,19 +735,22 @@ attrFor :: RenderContext -> GameState -> Int -> Int -> Char -> Attr
 attrFor context state x y baseChar
   | hasSelectedValueFrameAt state x y = highlightedBase `withForeColor` cyan
   | isConflictAt context.conflicts x y = highlightedBase `withForeColor` red
-  | isFixedCellAt state x y = highlightedBase `withForeColor` white
+  | isFixedCellAt state x y = highlightedBase `withForeColor` yellow
   | hasPlacedValueAt state x y = highlightedBase `withForeColor` green
   | hasCandidateAt state x y = highlightedBase `withForeColor` brightBlack
   | otherwise = highlightedBase
   where
     unhighlightedBaseAttr
-      | isMinorBorderChar baseChar = baseAttr `withForeColor` brightBlack
-      | otherwise = baseAttr
+      | isMinorBorderChar baseChar = fillAttr (baseAttr `withForeColor` brightBlack)
+      | otherwise = fillAttr baseAttr
     highlightedBase
       | context.solved && isBorderChar baseChar = unhighlightedBaseAttr `withForeColor` green
       | onSelectedCellBorder state x y = cellBorderAttr
       | onQuadrantBorder state x y = borderAttr
       | otherwise = unhighlightedBaseAttr
+    fillAttr attr
+      | filledCellAt state x y = attr `withBackColor` brightBlack
+      | otherwise = attr
 
 isBorderChar :: Char -> Bool
 isBorderChar c = c /= '.' && c /= ' '
@@ -864,6 +867,12 @@ cellAtDisplayCoord x y
     yRel = yOffset `mod` 4
     cellCol = xOffset `div` 8
     cellRow = yOffset `div` 4
+
+filledCellAt :: GameState -> Int -> Int -> Bool
+filledCellAt state x y =
+  case cellAtDisplayCoord x y of
+    Nothing -> False
+    Just cell -> hasValueAt state cell
 
 candidateAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
 candidateAtDisplayCoord state x y = do
