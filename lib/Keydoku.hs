@@ -205,8 +205,9 @@ elapsedSeconds now timer =
 
 formatElapsed :: Int -> String
 formatElapsed elapsed =
-  let (minutesElapsed, secondsElapsed) = elapsed `divMod` 60
-   in pad2 minutesElapsed ++ ":" ++ pad2 secondsElapsed
+  let (hoursElapsed, remainingAfterHours) = elapsed `divMod` 3600
+      (minutesElapsed, secondsElapsed) = remainingAfterHours `divMod` 60
+   in pad2 hoursElapsed ++ ":" ++ pad2 minutesElapsed ++ ":" ++ pad2 secondsElapsed
 
 pad2 :: Int -> String
 pad2 n
