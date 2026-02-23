@@ -473,8 +473,8 @@ renderSidebar context elapsed state =
            string defAttr "Actions",
            sidebarActionLine "Del" "clear selected cell",
            sidebarActionLine "0" "deselect",
-           sidebarActionLine "-" "undo",
-           sidebarActionLine "*" "redo",
+           sidebarActionLine "*" "undo",
+           sidebarActionLine "-" "redo",
            sidebarActionLine "+" "toggle insert/remove mode",
            sidebarActionLine "F2" "new hard game",
            sidebarActionLine "Esc" "quit"
