@@ -217,8 +217,8 @@ pad2 n
 handleKey :: Char -> GameState -> GameState
 handleKey key state
   | key == 'h' || key == '0' = clearStatusMessage (deselect state)
-  | key == 'y' || key == '-' = clearStatusMessage (undoLastBoardChange state)
-  | key == 'p' || key == '*' = clearStatusMessage (redoLastBoardChange state)
+  | key == 'y' || key == '*' = clearStatusMessage (undoLastBoardChange state)
+  | key == 'p' || key == '-' = clearStatusMessage (redoLastBoardChange state)
   | key == 'n' = clearStatusMessage (clearSelectedCellValue state)
   | key == '+' || key == ':' || key == 'ö' = clearStatusMessage (toggleInsertionMode state)
   | otherwise =

@@ -327,7 +327,7 @@ spec = do
 
     it "ignores undo when no move has been made" $ do
       Keydoku.handleKey 'y' Keydoku.initialState `shouldBe` Keydoku.initialState
-      Keydoku.handleKey '-' Keydoku.initialState `shouldBe` Keydoku.initialState
+      Keydoku.handleKey '*' Keydoku.initialState `shouldBe` Keydoku.initialState
 
     it "redoes board edits with p after undo" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState
@@ -338,12 +338,12 @@ spec = do
       Keydoku.cellValueAt undone (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
       Keydoku.cellValueAt redone (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
 
-    it "redoes board edits with * after undo" $ do
+    it "redoes board edits with - after undo" $ do
       let state1 = Keydoku.handleKey 'o' Keydoku.initialState
           state2 = Keydoku.handleKey 'k' state1
           state3 = Keydoku.handleKey 'm' state2
-          undone = Keydoku.handleKey '-' state3
-          redone = Keydoku.handleKey '*' undone
+          undone = Keydoku.handleKey '*' state3
+          redone = Keydoku.handleKey '-' undone
       Keydoku.cellValueAt undone (Keydoku.KeypadPos 1 7) `shouldBe` Nothing
       Keydoku.cellValueAt redone (Keydoku.KeypadPos 1 7) `shouldBe` Just 1
 
