@@ -467,23 +467,35 @@ renderSidebar context elapsed state =
       string defAttr "",
       string defAttr "Controls",
       string defAttr "Select quadrant / cell / value using keypad layout:",
-      string defAttr "+---+---+---+",
-      string defAttr "| 7 | 8 | 9 |",
-      string defAttr "+---+---+---+",
-      string defAttr "| 4 | 5 | 6 |",
-      string defAttr "+---+---+---+",
-      string defAttr "| 1 | 2 | 3 |",
-      string defAttr "+---+---+---+",
+      string keyHintAttr "+---+---+---+",
+      string keyHintAttr "| 7 | 8 | 9 |",
+      string keyHintAttr "+---+---+---+",
+      string keyHintAttr "| 4 | 5 | 6 |",
+      string keyHintAttr "+---+---+---+",
+      string keyHintAttr "| 1 | 2 | 3 |",
+      string keyHintAttr "+---+---+---+",
       string defAttr "",
       string defAttr "Actions",
-      string defAttr "Del / n  clear selected cell",
-      string defAttr "0 / h    deselect",
-      string defAttr "- / y    undo",
-      string defAttr "* / p    redo",
-      string defAttr "+        toggle insert/remove mode",
-      string defAttr "F2       new hard game",
-      string defAttr "q / Esc  quit"
+      sidebarActionLine "Del" "clear selected cell",
+      sidebarActionLine "0" "deselect",
+      sidebarActionLine "-" "undo",
+      sidebarActionLine "*" "redo",
+      sidebarActionLine "+" "toggle insert/remove mode",
+      sidebarActionLine "F2" "new hard game",
+      sidebarActionLine "Esc" "quit"
     ]
+  where
+    keyHintAttr = defAttr `withForeColor` cyan
+
+sidebarActionLine :: String -> String -> Image
+sidebarActionLine keyLabel description =
+  horizCat
+    [ string (defAttr `withForeColor` cyan) (padRight 8 keyLabel),
+      string defAttr description
+    ]
+
+padRight :: Int -> String -> String
+padRight width text = text ++ replicate (max 0 (width - length text)) ' '
 
 renderModeToggle :: GameState -> Image
 renderModeToggle state =
