@@ -36,7 +36,7 @@
           inherit (haskellNix) config;
         };
         flake = pkgs.keydoku.flake { };
-        windowsPackage =
+        windowsPackages =
           if pkgs.stdenv.hostPlatform.isLinux then
             let
               pkgsWindows = import nixpkgs {
@@ -50,11 +50,25 @@
                 compiler-nix-name = "ghc984";
                 projectFileName = "cabal.project.windows";
               };
-            in { windows = keydokuWindows.hsPkgs.keydoku.components.exes.keydoku; }
+              windowsExe = keydokuWindows.hsPkgs.keydoku.components.exes.keydoku;
+            in {
+              windows = windowsExe;
+              windows-zip = pkgs.runCommand "keydoku-windows.zip"
+                { nativeBuildInputs = [ pkgs.zip ]; }
+                ''
+                  mkdir -p staging
+                  cp -r ${windowsExe}/bin staging/keydoku
+                  chmod -R u+w staging
+                  (
+                    cd staging
+                    zip -r "$out" keydoku
+                  )
+                '';
+            }
           else
             { };
       in flake // {
-        packages = flake.packages // windowsPackage // {
+        packages = flake.packages // windowsPackages // {
           default = flake.packages."keydoku:exe:keydoku";
           container = pkgs.dockerTools.buildLayeredImage {
             name = "keydoku";
