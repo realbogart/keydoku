@@ -460,32 +460,41 @@ render elapsed state =
 
 renderSidebar :: RenderContext -> Int -> GameState -> Image
 renderSidebar context elapsed state =
-  vertCat
+  vertCat $
     [ string (messageAttr context state) (statusTextWithContext context state),
       string defAttr ("Time: " ++ formatElapsed elapsed),
       renderModeToggle state,
       string defAttr "",
       string defAttr "Controls",
-      string defAttr "Select quadrant / cell / value using keypad layout:",
-      string keyHintAttr "+---+---+---+",
-      string keyHintAttr "| 7 | 8 | 9 |",
-      string keyHintAttr "+---+---+---+",
-      string keyHintAttr "| 4 | 5 | 6 |",
-      string keyHintAttr "+---+---+---+",
-      string keyHintAttr "| 1 | 2 | 3 |",
-      string keyHintAttr "+---+---+---+",
-      string defAttr "",
-      string defAttr "Actions",
-      sidebarActionLine "Del" "clear selected cell",
-      sidebarActionLine "0" "deselect",
-      sidebarActionLine "-" "undo",
-      sidebarActionLine "*" "redo",
-      sidebarActionLine "+" "toggle insert/remove mode",
-      sidebarActionLine "F2" "new hard game",
-      sidebarActionLine "Esc" "quit"
+      string defAttr "Select quadrant / cell / value using keypad layout:"
     ]
+      ++ map (string keyHintAttr) numpadGuideLines
+      ++ [ string defAttr "",
+           string defAttr "Actions",
+           sidebarActionLine "Del" "clear selected cell",
+           sidebarActionLine "0" "deselect",
+           sidebarActionLine "-" "undo",
+           sidebarActionLine "*" "redo",
+           sidebarActionLine "+" "toggle insert/remove mode",
+           sidebarActionLine "F2" "new hard game",
+           sidebarActionLine "Esc" "quit"
+         ]
   where
     keyHintAttr = defAttr `withForeColor` cyan
+    numpadGuideLines =
+      [ "        ┌───┬───┐",
+        "        │ * │ - │",
+        "┌───┬───┼───┼───┤",
+        "│ 7 │ 8 │ 9 │ + │",
+        "├───┼───┼───┤   │",
+        "│ 4 │ 5 │ 6 │ + │",
+        "└───┴───┴───┴───┘",
+        "┌───┬───┬───┐",
+        "│ 1 │ 2 │ 3 │",
+        "├───────┼───┤",
+        "│   0   │Del│",
+        "└───────┴───┘"
+      ]
 
 sidebarActionLine :: String -> String -> Image
 sidebarActionLine keyLabel description =
