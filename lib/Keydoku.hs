@@ -452,15 +452,38 @@ valueKeyToDigit key =
 render :: Int -> GameState -> Image
 render elapsed state =
   let context = renderContext state
-   in vertCat
+   in horizCat
         [ renderBoard context state,
-          string defAttr "",
-          string (messageAttr context state) (statusTextWithContext context state),
-          string defAttr ("Time: " ++ formatElapsed elapsed),
-          renderModeToggle state,
-          string defAttr "Select: 7 8 9 / 4 5 6 / 1 2 3",
-          string defAttr "Value:  7 8 9 / 4 5 6 / 1 2 3  Del=clear, -=undo, *=redo, +=toggle mode, 0=deselect, F2=new hard game, q/Esc=quit"
+          string defAttr "   ",
+          renderSidebar context elapsed state
         ]
+
+renderSidebar :: RenderContext -> Int -> GameState -> Image
+renderSidebar context elapsed state =
+  vertCat
+    [ string (messageAttr context state) (statusTextWithContext context state),
+      string defAttr ("Time: " ++ formatElapsed elapsed),
+      renderModeToggle state,
+      string defAttr "",
+      string defAttr "Controls",
+      string defAttr "Select quadrant / cell / value using keypad layout:",
+      string defAttr "+---+---+---+",
+      string defAttr "| 7 | 8 | 9 |",
+      string defAttr "+---+---+---+",
+      string defAttr "| 4 | 5 | 6 |",
+      string defAttr "+---+---+---+",
+      string defAttr "| 1 | 2 | 3 |",
+      string defAttr "+---+---+---+",
+      string defAttr "",
+      string defAttr "Actions",
+      string defAttr "Del / n  clear selected cell",
+      string defAttr "0 / h    deselect",
+      string defAttr "- / y    undo",
+      string defAttr "* / p    redo",
+      string defAttr "+        toggle insert/remove mode",
+      string defAttr "F2       new hard game",
+      string defAttr "q / Esc  quit"
+    ]
 
 renderModeToggle :: GameState -> Image
 renderModeToggle state =
