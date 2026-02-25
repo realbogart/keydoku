@@ -1,0 +1,7 @@
+- [ ] Turn off/on showing candidates (local setting)
+- [ ] Undo/deselect confusing keys?
+- [ ] Cracking the cryptic (app settings)
+- [ ] Puzzle of the day
+- [ ] User settings
+- [ ] Raise the difficulty
+- [ ] Hint system
