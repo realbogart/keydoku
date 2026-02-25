@@ -2,6 +2,7 @@ module KeydokuSpec (spec) where
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Data.Time.Calendar (fromGregorian)
 import Keydoku qualified
 import Test.Hspec
 
@@ -139,6 +140,21 @@ spec = do
 
     it "produces different puzzles for different seeds" $ do
       Keydoku.generateHardPuzzle 123456 `shouldNotBe` Keydoku.generateHardPuzzle 123457
+
+  describe "seedFromUTCDate" $ do
+    it "is deterministic for a given UTC date" $ do
+      let day = fromGregorian 2026 2 25
+      Keydoku.seedFromUTCDate day `shouldBe` Keydoku.seedFromUTCDate day
+
+    it "produces different seeds for different UTC dates" $ do
+      let dayA = fromGregorian 2026 2 25
+          dayB = fromGregorian 2026 2 26
+      Keydoku.seedFromUTCDate dayA `shouldNotBe` Keydoku.seedFromUTCDate dayB
+
+    it "drives stable puzzle-of-the-day generation" $ do
+      let day = fromGregorian 2026 2 25
+          seed = Keydoku.seedFromUTCDate day
+      Keydoku.generateHardPuzzle seed `shouldBe` Keydoku.generateHardPuzzle seed
 
   describe "selected value highlighting" $ do
     it "detects matching filled values when a filled cell is selected" $ do

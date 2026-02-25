@@ -76,6 +76,7 @@ test-suite keydoku-test
     other-modules:    KeydokuSpec
     build-depends:    base,
                       containers,
+                      time,
                       keydoku,
                       hspec,
                       QuickCheck

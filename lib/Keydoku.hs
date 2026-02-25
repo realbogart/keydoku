@@ -7,7 +7,8 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Time.Clock (UTCTime, addUTCTime, diffUTCTime, getCurrentTime)
+import Data.Time.Calendar (Day, toModifiedJulianDay)
+import Data.Time.Clock (UTCTime, addUTCTime, diffUTCTime, getCurrentTime, utctDay)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Graphics.Vty
   ( Attr,
@@ -126,7 +127,7 @@ mainWithBoardFile maybeBoardFile = do
 loadInitialState :: Maybe FilePath -> IO GameState
 loadInitialState maybeBoardFile =
   case maybeBoardFile of
-    Nothing -> startNewHardGame
+    Nothing -> startPuzzleOfTheDayGame
     Just boardFile -> loadStateFromBoardFile boardFile
 
 loadStateFromBoardFile :: FilePath -> IO GameState
@@ -182,6 +183,10 @@ loop vty timer state = do
     Just (EvKey (KChar 'q') []) -> shutdown vty
     Just (EvKey (KFun 2) []) -> do
       updated <- startNewHardGame
+      timerStarted <- getCurrentTime
+      loop vty (TimerState timerStarted Nothing) updated
+    Just (EvKey (KFun 3) []) -> do
+      updated <- startPuzzleOfTheDayGame
       timerStarted <- getCurrentTime
       loop vty (TimerState timerStarted Nothing) updated
     Just (EvKey KDel []) -> loop vty timerAtFrame (clearStatusMessage (clearSelectedCellValue state))
@@ -484,7 +489,8 @@ renderSidebar context elapsed state =
            sidebarActionLine "-" "redo",
            sidebarActionLine "/" "show/hide candidates",
            sidebarActionLine "+" "toggle insert/remove mode",
-           sidebarActionLine "F2" "new hard game",
+           sidebarActionLine "F2" "new random hard game",
+           sidebarActionLine "F3" "puzzle of the day",
            sidebarActionLine "Esc" "quit"
          ]
   where
@@ -583,20 +589,40 @@ messageAttr context state =
 
 startNewHardGame :: IO GameState
 startNewHardGame = do
-  seed <- freshSeed
+  seed <- randomSeed
+  pure (newHardGameFromSeed seed "Started a new random hard Sudoku.")
+
+startPuzzleOfTheDayGame :: IO GameState
+startPuzzleOfTheDayGame = do
+  seed <- puzzleOfTheDaySeedUTC
+  now <- getCurrentTime
+  let day = now.utctDay
+      dateLabel = show day
+  pure (newHardGameFromSeed seed ("Puzzle of the day (UTC " ++ dateLabel ++ ")."))
+
+newHardGameFromSeed :: Int -> String -> GameState
+newHardGameFromSeed seed status =
   let boardValues = generateHardPuzzle seed
       fixed = Map.keysSet boardValues
-  pure
-    initialState
-      { values = boardValues,
-        fixedCells = fixed,
-        statusMessage = Just (StatusInfo "Started a new hard Sudoku.")
-      }
+   in initialState
+        { values = boardValues,
+          fixedCells = fixed,
+          statusMessage = Just (StatusInfo status)
+        }
 
-freshSeed :: IO Int
-freshSeed = do
+randomSeed :: IO Int
+randomSeed = do
   now <- getPOSIXTime
   pure (floor (now * 1000000))
+
+puzzleOfTheDaySeedUTC :: IO Int
+puzzleOfTheDaySeedUTC = do
+  now <- getCurrentTime
+  pure (seedFromUTCDate now.utctDay)
+
+seedFromUTCDate :: Day -> Int
+seedFromUTCDate day =
+  normalizeSeed (fromInteger (toModifiedJulianDay day) * 1103515245 + 12345)
 
 generateHardPuzzle :: Int -> Map KeypadPos Int
 generateHardPuzzle seed =
@@ -606,9 +632,9 @@ generateSolvedBoard :: Int -> Map KeypadPos Int
 generateSolvedBoard seed =
   Map.fromList
     [ (KeypadPos row col, digitOrder !! (baseDigit - 1))
-    | (row, sourceRow) <- zip [0 ..] rowOrder,
-      (col, sourceCol) <- zip [0 ..] colOrder,
-      let baseDigit = ((sourceRow * 3 + sourceRow `div` 3 + sourceCol) `mod` 9) + 1
+      | (row, sourceRow) <- zip [0 ..] rowOrder,
+        (col, sourceCol) <- zip [0 ..] colOrder,
+        let baseDigit = ((sourceRow * 3 + sourceRow `div` 3 + sourceCol) `mod` 9) + 1
     ]
   where
     digitOrder = shuffleFromSeed seed [1 .. 9]
@@ -667,23 +693,23 @@ bestEmptyCellWithCandidates board =
   where
     cellsWithCandidates =
       [ (cell, allowedDigitsAtRaw board cell)
-      | cell <- allBoardCells,
-        Map.notMember cell board
+        | cell <- allBoardCells,
+          Map.notMember cell board
       ]
 
 allowedDigitsAtRaw :: Map KeypadPos Int -> KeypadPos -> [Int]
 allowedDigitsAtRaw board cell =
   [ digit
-  | digit <- [1 .. 9],
-    notElem digit usedDigits
+    | digit <- [1 .. 9],
+      notElem digit usedDigits
   ]
   where
     usedDigits =
       [ value
-      | (otherCell, value) <- Map.toList board,
-        otherCell.row == cell.row
-          || otherCell.col == cell.col
-          || (otherCell.row `div` 3 == cell.row `div` 3 && otherCell.col `div` 3 == cell.col `div` 3)
+        | (otherCell, value) <- Map.toList board,
+          otherCell.row == cell.row
+            || otherCell.col == cell.col
+            || (otherCell.row `div` 3 == cell.row `div` 3 && otherCell.col `div` 3 == cell.col `div` 3)
       ]
 
 advanceSeed :: Int -> Int -> Int
@@ -715,8 +741,8 @@ removeAt targetIndex items =
 allBoardCells :: [KeypadPos]
 allBoardCells =
   [ KeypadPos row col
-  | row <- [0 .. 8],
-    col <- [0 .. 8]
+    | row <- [0 .. 8],
+      col <- [0 .. 8]
   ]
 
 normalizeClipboardText :: String -> String
@@ -751,8 +777,8 @@ parseRow (rowIndex, rowText) =
 allCells :: [String] -> [(Int, Int, Char)]
 allCells rows =
   [ (rowIndex, colIndex, cellChar)
-  | (rowIndex, rowText) <- zip [0 ..] rows,
-    (colIndex, cellChar) <- zip [0 ..] rowText
+    | (rowIndex, rowText) <- zip [0 ..] rows,
+      (colIndex, cellChar) <- zip [0 ..] rowText
   ]
 
 parseCell :: Int -> (Int, Char) -> Either String [(KeypadPos, Int)]
@@ -773,14 +799,14 @@ renderBoard :: RenderContext -> GameState -> Image
 renderBoard context state =
   vertCat
     [ renderLine context state y line
-    | (y, line) <- zip [0 ..] boardLines
+      | (y, line) <- zip [0 ..] boardLines
     ]
 
 renderLine :: RenderContext -> GameState -> Int -> String -> Image
 renderLine context state y line =
   horizCat
     [ char (attrFor context state x y baseChar) (charAt state x y baseChar)
-    | (x, baseChar) <- zip [0 ..] line
+      | (x, baseChar) <- zip [0 ..] line
     ]
 
 charAt :: GameState -> Int -> Int -> Char -> Char
@@ -861,8 +887,8 @@ selectedValueMatchCells state =
     Just highlighted ->
       Set.fromList
         [ cell
-        | (cell, value) <- Map.toList state.values,
-          value == highlighted
+          | (cell, value) <- Map.toList state.values,
+            value == highlighted
         ]
 
 activeHighlightedDigit :: GameState -> Maybe Int
@@ -945,15 +971,14 @@ candidateAtDisplayCoord :: GameState -> Int -> Int -> Maybe Int
 candidateAtDisplayCoord state x y = do
   if not state.showCandidates
     then Nothing
-    else
-      do
-        (cellPos, candidateDigit) <- candidateSlotAtDisplayCoord x y
-        if hasValueAt state cellPos
-          then Nothing
-          else
-            if candidateDigit `elem` allowedDigitsAt state cellPos
-              then Just candidateDigit
-              else Nothing
+    else do
+      (cellPos, candidateDigit) <- candidateSlotAtDisplayCoord x y
+      if hasValueAt state cellPos
+        then Nothing
+        else
+          if candidateDigit `elem` allowedDigitsAt state cellPos
+            then Just candidateDigit
+            else Nothing
 
 candidateSlotAtDisplayCoord :: Int -> Int -> Maybe (KeypadPos, Int)
 candidateSlotAtDisplayCoord x y
@@ -996,9 +1021,9 @@ allowedDigitsAt state cell
   | hasValueAt state cell = []
   | otherwise =
       [ digit
-      | digit <- [1 .. 9],
-        not (digit `elem` usedDigits),
-        not (Set.member digit (removedCandidatesAt state cell))
+        | digit <- [1 .. 9],
+          not (digit `elem` usedDigits),
+          not (Set.member digit (removedCandidatesAt state cell))
       ]
   where
     usedDigits = rowDigits state cell ++ colDigits state cell ++ boxDigits state cell
@@ -1009,31 +1034,31 @@ removedCandidatesAt state cell = Map.findWithDefault Set.empty cell state.remove
 rowDigits :: GameState -> KeypadPos -> [Int]
 rowDigits state cell =
   [ value
-  | (KeypadPos valueRow _valueCol, value) <- Map.toList state.values,
-    valueRow == cell.row
+    | (KeypadPos valueRow _valueCol, value) <- Map.toList state.values,
+      valueRow == cell.row
   ]
 
 colDigits :: GameState -> KeypadPos -> [Int]
 colDigits state cell =
   [ value
-  | (KeypadPos _valueRow valueCol, value) <- Map.toList state.values,
-    valueCol == cell.col
+    | (KeypadPos _valueRow valueCol, value) <- Map.toList state.values,
+      valueCol == cell.col
   ]
 
 boxDigits :: GameState -> KeypadPos -> [Int]
 boxDigits state cell =
   [ value
-  | (KeypadPos valueRow valueCol, value) <- Map.toList state.values,
-    valueRow `div` 3 == cell.row `div` 3,
-    valueCol `div` 3 == cell.col `div` 3
+    | (KeypadPos valueRow valueCol, value) <- Map.toList state.values,
+      valueRow `div` 3 == cell.row `div` 3,
+      valueCol `div` 3 == cell.col `div` 3
   ]
 
 conflictingCells :: GameState -> Set KeypadPos
 conflictingCells state =
   Set.fromList
     [ cell
-    | (cell, value) <- Map.toList state.values,
-      hasConflict cell value
+      | (cell, value) <- Map.toList state.values,
+        hasConflict cell value
     ]
   where
     hasConflict cell value =
@@ -1124,14 +1149,14 @@ contentLine =
     ++ concat
       [ cellRow blockCol
           ++ if blockCol < 2 then "║" else ""
-      | blockCol <- [0 .. 2]
+        | blockCol <- [0 .. 2]
       ]
     ++ "║"
   where
     cellRow _blockCol =
       concat
         [ " . . . " ++ if colInBlock < 2 then "│" else ""
-        | colInBlock <- [0 .. 2]
+          | colInBlock <- [0 .. 2]
         ]
 
 makeSeparator :: Char -> Char -> Char -> Char -> Char -> String
@@ -1140,12 +1165,12 @@ makeSeparator left right minorCross majorCross fill =
     ++ concat
       [ chunk blockCol
           ++ if blockCol < 2 then [majorCross] else ""
-      | blockCol <- [0 .. 2]
+        | blockCol <- [0 .. 2]
       ]
     ++ [right]
   where
     chunk _blockCol =
       concat
         [ replicate 7 fill ++ if colInBlock < 2 then [minorCross] else ""
-        | colInBlock <- [0 .. 2]
+          | colInBlock <- [0 .. 2]
         ]
