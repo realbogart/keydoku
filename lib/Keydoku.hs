@@ -477,12 +477,10 @@ renderSidebar context elapsed state =
       string defAttr ("Time: " ++ formatElapsed elapsed),
       renderModeToggle state,
       string defAttr "",
-      string defAttr "Controls",
       string defAttr "Select quadrant / cell / value using keypad layout:"
     ]
       ++ map renderNumpadGuideLine numpadGuideLines
       ++ [ string defAttr "",
-           string defAttr "Actions",
            sidebarActionLine "Del" "clear selected cell",
            sidebarActionLine "0" "deselect",
            sidebarActionLine "*" "undo",
