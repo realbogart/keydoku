@@ -487,7 +487,7 @@ renderSidebar context elapsed state =
            sidebarActionLine "-" "redo",
            sidebarActionLine "/" "show/hide candidates",
            sidebarActionLine "+" "toggle insert/remove candidates mode",
-           sidebarActionLine "F2" "new random hard game",
+           sidebarActionLine "F2" "new random hard puzzle",
            sidebarActionLine "F3" "puzzle of the day",
            sidebarActionLine "Esc" "quit"
          ]
