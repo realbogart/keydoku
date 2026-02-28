@@ -1,5 +1,6 @@
 {
   description = "";
+  nixConfig = { allow-import-from-derivation = true; };
 
   inputs = {
     nixpkgs.url =
@@ -36,37 +37,36 @@
           inherit (haskellNix) config;
         };
         flake = pkgs.keydoku.flake { };
-        windowsPackages =
-          if pkgs.stdenv.hostPlatform.isLinux then
-            let
-              pkgsWindows = import nixpkgs {
-                localSystem = system;
-                crossSystem = { config = "x86_64-w64-mingw32"; };
-                inherit overlays;
-                inherit (haskellNix) config;
-              };
-              keydokuWindows = pkgsWindows.haskell-nix.project' {
-                src = ./.;
-                compiler-nix-name = "ghc984";
-                projectFileName = "cabal.project.windows";
-              };
-              windowsExe = keydokuWindows.hsPkgs.keydoku.components.exes.keydoku;
-            in {
-              windows = windowsExe;
-              windows-zip = pkgs.runCommand "keydoku-windows.zip"
-                { nativeBuildInputs = [ pkgs.zip ]; }
-                ''
-                  mkdir -p staging
-                  cp -r ${windowsExe}/bin staging/keydoku
-                  chmod -R u+w staging
-                  (
-                    cd staging
-                    zip -r "$out" keydoku
-                  )
-                '';
-            }
-          else
-            { };
+        windowsPackages = if pkgs.stdenv.hostPlatform.isLinux then
+          let
+            pkgsWindows = import nixpkgs {
+              localSystem = system;
+              crossSystem = { config = "x86_64-w64-mingw32"; };
+              inherit overlays;
+              inherit (haskellNix) config;
+            };
+            keydokuWindows = pkgsWindows.haskell-nix.project' {
+              src = ./.;
+              compiler-nix-name = "ghc984";
+              projectFileName = "cabal.project.windows";
+            };
+            windowsExe = keydokuWindows.hsPkgs.keydoku.components.exes.keydoku;
+          in {
+            windows = windowsExe;
+            windows-zip = pkgs.runCommand "keydoku-windows.zip" {
+              nativeBuildInputs = [ pkgs.zip ];
+            } ''
+              mkdir -p staging
+              cp -r ${windowsExe}/bin staging/keydoku
+              chmod -R u+w staging
+              (
+                cd staging
+                zip -r "$out" keydoku
+              )
+            '';
+          }
+        else
+          { };
       in flake // {
         packages = flake.packages // windowsPackages // {
           default = flake.packages."keydoku:exe:keydoku";
