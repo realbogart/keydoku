@@ -1,5 +1,5 @@
 {
     "derivations": [
-      { "flake_attr": "default", "is_container": false },
+      { "flake_attr": "default", "is_container": false }
     ]
   }
