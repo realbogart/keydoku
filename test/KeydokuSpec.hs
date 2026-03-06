@@ -44,15 +44,19 @@ spec = do
 
   describe "auto candidates" $ do
     it "shows keypad-layout candidates in empty cells" $ do
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 2 1 `shouldBe` Just 7
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 4 1 `shouldBe` Just 8
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 6 1 `shouldBe` Just 9
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 2 2 `shouldBe` Just 4
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 4 2 `shouldBe` Just 5
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 6 2 `shouldBe` Just 6
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 2 3 `shouldBe` Just 1
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 4 3 `shouldBe` Just 2
-      Keydoku.candidateAtDisplayCoord Keydoku.initialState 6 3 `shouldBe` Just 3
+      let state = Keydoku.initialState {Keydoku.showCandidates = True}
+      Keydoku.candidateAtDisplayCoord state 2 1 `shouldBe` Just 7
+      Keydoku.candidateAtDisplayCoord state 4 1 `shouldBe` Just 8
+      Keydoku.candidateAtDisplayCoord state 6 1 `shouldBe` Just 9
+      Keydoku.candidateAtDisplayCoord state 2 2 `shouldBe` Just 4
+      Keydoku.candidateAtDisplayCoord state 4 2 `shouldBe` Just 5
+      Keydoku.candidateAtDisplayCoord state 6 2 `shouldBe` Just 6
+      Keydoku.candidateAtDisplayCoord state 2 3 `shouldBe` Just 1
+      Keydoku.candidateAtDisplayCoord state 4 3 `shouldBe` Just 2
+      Keydoku.candidateAtDisplayCoord state 6 3 `shouldBe` Just 3
+
+    it "hides candidates until explicitly enabled" $ do
+      Keydoku.candidateAtDisplayCoord Keydoku.initialState 2 1 `shouldBe` Nothing
 
     it "removes candidates blocked by Sudoku rules" $ do
       let state =
@@ -72,7 +76,8 @@ spec = do
       let cell = Keydoku.KeypadPos 0 0
           state =
             Keydoku.initialState
-              { Keydoku.removedCandidates = Map.fromList [(cell, Set.fromList [5, 7])]
+              { Keydoku.removedCandidates = Map.fromList [(cell, Set.fromList [5, 7])],
+                Keydoku.showCandidates = True
               }
       Keydoku.allowedDigitsAt state cell `shouldNotContain` [5]
       Keydoku.allowedDigitsAt state cell `shouldNotContain` [7]

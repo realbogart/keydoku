@@ -41,21 +41,9 @@ library
     exposed-modules:  Keydoku
     build-depends:    base,
                       containers,
-                      text,
                       vty,
                       vty-crossplatform,
-                      bytestring,
-                      async,
-                      unordered-containers,
-                      directory,
-                      process,
-                      filepath,
-                      time,
-                      stm,
-                      transformers,
-                      binary,
-                      foreign-store
-    hs-source-dirs:   src
+                      time
     default-language: GHC2021
 
 executable keydoku
@@ -63,8 +51,7 @@ executable keydoku
     import:           extensions
     main-is:          Main.hs
     build-depends:    base,
-                      keydoku,
-                      cmdargs
+                      keydoku
     hs-source-dirs:   src
     default-language: GHC2021
 
@@ -78,8 +65,7 @@ test-suite keydoku-test
                       containers,
                       time,
                       keydoku,
-                      hspec,
-                      QuickCheck
+                      hspec
     hs-source-dirs:   test
     default-language: GHC2021
     ghc-options:      -threaded -rtsopts -with-rtsopts=-N

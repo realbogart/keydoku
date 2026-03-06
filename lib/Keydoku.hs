@@ -630,9 +630,9 @@ generateSolvedBoard :: Int -> Map KeypadPos Int
 generateSolvedBoard seed =
   Map.fromList
     [ (KeypadPos row col, digitOrder !! (baseDigit - 1))
-    | (row, sourceRow) <- zip [0 ..] rowOrder,
-      (col, sourceCol) <- zip [0 ..] colOrder,
-      let baseDigit = ((sourceRow * 3 + sourceRow `div` 3 + sourceCol) `mod` 9) + 1
+      | (row, sourceRow) <- zip [0 ..] rowOrder,
+        (col, sourceCol) <- zip [0 ..] colOrder,
+        let baseDigit = ((sourceRow * 3 + sourceRow `div` 3 + sourceCol) `mod` 9) + 1
     ]
   where
     digitOrder = shuffleFromSeed seed [1 .. 9]
@@ -691,23 +691,23 @@ bestEmptyCellWithCandidates board =
   where
     cellsWithCandidates =
       [ (cell, allowedDigitsAtRaw board cell)
-      | cell <- allBoardCells,
-        Map.notMember cell board
+        | cell <- allBoardCells,
+          Map.notMember cell board
       ]
 
 allowedDigitsAtRaw :: Map KeypadPos Int -> KeypadPos -> [Int]
 allowedDigitsAtRaw board cell =
   [ digit
-  | digit <- [1 .. 9],
-    notElem digit usedDigits
+    | digit <- [1 .. 9],
+      notElem digit usedDigits
   ]
   where
     usedDigits =
       [ value
-      | (otherCell, value) <- Map.toList board,
-        otherCell.row == cell.row
-          || otherCell.col == cell.col
-          || (otherCell.row `div` 3 == cell.row `div` 3 && otherCell.col `div` 3 == cell.col `div` 3)
+        | (otherCell, value) <- Map.toList board,
+          otherCell.row == cell.row
+            || otherCell.col == cell.col
+            || (otherCell.row `div` 3 == cell.row `div` 3 && otherCell.col `div` 3 == cell.col `div` 3)
       ]
 
 advanceSeed :: Int -> Int -> Int
@@ -739,8 +739,8 @@ removeAt targetIndex items =
 allBoardCells :: [KeypadPos]
 allBoardCells =
   [ KeypadPos row col
-  | row <- [0 .. 8],
-    col <- [0 .. 8]
+    | row <- [0 .. 8],
+      col <- [0 .. 8]
   ]
 
 normalizeClipboardText :: String -> String
@@ -775,8 +775,8 @@ parseRow (rowIndex, rowText) =
 allCells :: [String] -> [(Int, Int, Char)]
 allCells rows =
   [ (rowIndex, colIndex, cellChar)
-  | (rowIndex, rowText) <- zip [0 ..] rows,
-    (colIndex, cellChar) <- zip [0 ..] rowText
+    | (rowIndex, rowText) <- zip [0 ..] rows,
+      (colIndex, cellChar) <- zip [0 ..] rowText
   ]
 
 parseCell :: Int -> (Int, Char) -> Either String [(KeypadPos, Int)]
@@ -797,14 +797,14 @@ renderBoard :: RenderContext -> GameState -> Image
 renderBoard context state =
   vertCat
     [ renderLine context state y line
-    | (y, line) <- zip [0 ..] boardLines
+      | (y, line) <- zip [0 ..] boardLines
     ]
 
 renderLine :: RenderContext -> GameState -> Int -> String -> Image
 renderLine context state y line =
   horizCat
     [ char (attrFor context state x y baseChar) (charAt state x y baseChar)
-    | (x, baseChar) <- zip [0 ..] line
+      | (x, baseChar) <- zip [0 ..] line
     ]
 
 charAt :: GameState -> Int -> Int -> Char -> Char
@@ -885,8 +885,8 @@ selectedValueMatchCells state =
     Just highlighted ->
       Set.fromList
         [ cell
-        | (cell, value) <- Map.toList state.values,
-          value == highlighted
+          | (cell, value) <- Map.toList state.values,
+            value == highlighted
         ]
 
 activeHighlightedDigit :: GameState -> Maybe Int
@@ -1019,9 +1019,9 @@ allowedDigitsAt state cell
   | hasValueAt state cell = []
   | otherwise =
       [ digit
-      | digit <- [1 .. 9],
-        not (digit `elem` usedDigits),
-        not (Set.member digit (removedCandidatesAt state cell))
+        | digit <- [1 .. 9],
+          not (digit `elem` usedDigits),
+          not (Set.member digit (removedCandidatesAt state cell))
       ]
   where
     usedDigits = rowDigits state cell ++ colDigits state cell ++ boxDigits state cell
@@ -1032,31 +1032,31 @@ removedCandidatesAt state cell = Map.findWithDefault Set.empty cell state.remove
 rowDigits :: GameState -> KeypadPos -> [Int]
 rowDigits state cell =
   [ value
-  | (KeypadPos valueRow _valueCol, value) <- Map.toList state.values,
-    valueRow == cell.row
+    | (KeypadPos valueRow _valueCol, value) <- Map.toList state.values,
+      valueRow == cell.row
   ]
 
 colDigits :: GameState -> KeypadPos -> [Int]
 colDigits state cell =
   [ value
-  | (KeypadPos _valueRow valueCol, value) <- Map.toList state.values,
-    valueCol == cell.col
+    | (KeypadPos _valueRow valueCol, value) <- Map.toList state.values,
+      valueCol == cell.col
   ]
 
 boxDigits :: GameState -> KeypadPos -> [Int]
 boxDigits state cell =
   [ value
-  | (KeypadPos valueRow valueCol, value) <- Map.toList state.values,
-    valueRow `div` 3 == cell.row `div` 3,
-    valueCol `div` 3 == cell.col `div` 3
+    | (KeypadPos valueRow valueCol, value) <- Map.toList state.values,
+      valueRow `div` 3 == cell.row `div` 3,
+      valueCol `div` 3 == cell.col `div` 3
   ]
 
 conflictingCells :: GameState -> Set KeypadPos
 conflictingCells state =
   Set.fromList
     [ cell
-    | (cell, value) <- Map.toList state.values,
-      hasConflict cell value
+      | (cell, value) <- Map.toList state.values,
+        hasConflict cell value
     ]
   where
     hasConflict cell value =
@@ -1147,14 +1147,14 @@ contentLine =
     ++ concat
       [ cellRow blockCol
           ++ if blockCol < 2 then "║" else ""
-      | blockCol <- [0 .. 2]
+        | blockCol <- [0 .. 2]
       ]
     ++ "║"
   where
     cellRow _blockCol =
       concat
         [ " . . . " ++ if colInBlock < 2 then "│" else ""
-        | colInBlock <- [0 .. 2]
+          | colInBlock <- [0 .. 2]
         ]
 
 makeSeparator :: Char -> Char -> Char -> Char -> Char -> String
@@ -1163,12 +1163,12 @@ makeSeparator left right minorCross majorCross fill =
     ++ concat
       [ chunk blockCol
           ++ if blockCol < 2 then [majorCross] else ""
-      | blockCol <- [0 .. 2]
+        | blockCol <- [0 .. 2]
       ]
     ++ [right]
   where
     chunk _blockCol =
       concat
         [ replicate 7 fill ++ if colInBlock < 2 then [minorCross] else ""
-        | colInBlock <- [0 .. 2]
+          | colInBlock <- [0 .. 2]
         ]
